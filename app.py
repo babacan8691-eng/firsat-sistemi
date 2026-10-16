@@ -1,520 +1,465 @@
 # =====================================================================
-# FIRSAT MADENCİLİĞİ — 30 SEKTÖR DETAYLI ANALİZ
+# LEAD YÖNETİM SİSTEMİ — 5 SEKTÖR ODAKLI
 # =====================================================================
 
 import streamlit as st
 
 st.set_page_config(
-    page_title="Fırsat Madenciliği",
+    page_title="Lead Yönetim Sistemi",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 import json
+import os
+import csv
+import io
 import random
-import requests
-import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
-VERI_DOSYASI = "firsat_verileri.json"
+# =====================================================================
+# AYARLAR
+# =====================================================================
+LEAD_DOSYASI = "leadlar.json"
+MESAJ_DOSYASI = "mesajlar.json"
 
 # =====================================================================
-# 30 SEKTÖR — DETAYLI GERÇEK BİLGİLER
+# 5 HEDEF SEKTÖR (Detaylı Bilgi)
 # =====================================================================
-SEKTORLER = [
-    {
-        "id": 1, "isim": "Veteriner Klinikleri", "kategori": "Sağlık",
-        "isletme": 12000, "butce_min": 1000, "butce_max": 3000, "yazilim": 3,
-        "ihtiyaclar": ["Hasta (hayvan) kayıt sistemi", "Aşı takvimi ve hatırlatma", "Reçete ve ilaç takibi", "Randevu sistemi", "Stok yönetimi"],
-        "problem": "Excel'de tutulan hasta kayıtları karışıyor, aşı hatırlatmaları kaçıyor",
-        "sikayet": "Mevcut yazılımlar pahalı (aylık 3.000+) ve karmaşık, öğrenmesi zor",
-        "mevcut_cozum": "Excel + defter + WhatsApp"
-    },
-    {
-        "id": 2, "isim": "Diş Hekimleri", "kategori": "Sağlık",
-        "isletme": 25000, "butce_min": 1500, "butce_max": 4000, "yazilim": 8,
-        "ihtiyaclar": ["Hasta takip", "Tedavi planı", "Röntgen arşivi", "Randevu sistemi", "Ödeme takibi"],
-        "problem": "Hasta geçmişi kağıtta, tekrar gelen hastayı hatırlamak zor",
-        "sikayet": "Kullanılan yazılım eski, mobil desteği yok, hasta SMS'i yok",
-        "mevcut_cozum": "Kağıt dosya + Excel"
-    },
-    {
-        "id": 3, "isim": "Psikologlar", "kategori": "Sağlık",
-        "isletme": 15000, "butce_min": 500, "butce_max": 1500, "yazilim": 4,
-        "ihtiyaclar": ["Seans notları (gizli)", "Randevu takvimi", "Online görüşme", "Faturalama"],
-        "problem": "Seans notları kağıtta, hasta dosyası taşımak zor",
-        "sikayet": "Mevcut sistemler Türkçe değil, KVKK uyumu belirsiz",
-        "mevcut_cozum": "Defter + Google Calendar"
-    },
-    {
-        "id": 4, "isim": "Eczaneler", "kategori": "Sağlık",
-        "isletme": 28000, "butce_min": 800, "butce_max": 2500, "yazilim": 6,
-        "ihtiyaclar": ["Stok takibi", "Reçete kaydı", "SGK entegrasyonu", "Son kullanma tarihi uyarısı"],
-        "problem": "Son kullanma tarihi geçen ilaçlar zarar yaratıyor",
-        "sikayet": "Mevcut yazılımlar sadece fatura için, raporlama yok",
-        "mevcut_cozum": "Zorunlu eczane yazılımı + Excel"
-    },
-    {
-        "id": 5, "isim": "Avukatlar", "kategori": "Hukuk",
-        "isletme": 50000, "butce_min": 800, "butce_max": 2500, "yazilim": 5,
-        "ihtiyaclar": ["Dava takip", "Duruşma takvimi", "Belge yönetimi", "Zaman/saat takibi", "Müvekkil portalı"],
-        "problem": "Dava dosyaları dağınık, duruşma tarihleri kaçırılabiliyor",
-        "sikayet": "Mevcut sistemler karmaşık, yaşlı avukatlar kullanamıyor",
-        "mevcut_cozum": "Excel + klasör + ajanda"
-    },
-    {
-        "id": 6, "isim": "Muhasebeciler", "kategori": "Muhasebe",
-        "isletme": 40000, "butce_min": 1000, "butce_max": 3000, "yazilim": 7,
-        "ihtiyaclar": ["Müşteri portalı", "E-fatura entegrasyonu", "Vergi takvimi", "Belge talep sistemi"],
-        "problem": "Müşterilerden belge toplamak sürekli WhatsApp'tan, kayboluyor",
-        "sikayet": "Mevcut yazılımlar yerel, bulut desteği zayıf",
-        "mevcut_cozum": "Luca/Zirve + WhatsApp + Excel"
-    },
-    {
-        "id": 7, "isim": "Mali Müşavirler", "kategori": "Muhasebe",
-        "isletme": 30000, "butce_min": 1200, "butce_max": 3500, "yazilim": 6,
-        "ihtiyaclar": ["Danışmanlık takip", "Müşteri CRM", "Belge arşivi", "Hatırlatma sistemi"],
+SEKTORLER = {
+    "Mali Müşavirler": {
+        "id": 1,
+        "kategori": "Muhasebe",
+        "isletme_sayisi": 30000,
+        "butce_min": 1200,
+        "butce_max": 3500,
+        "mevcut_cozum": "Excel + telefon rehberi + WhatsApp",
         "problem": "Müşteri ilişkileri kişisel telefonlarda, kurumsal değil",
         "sikayet": "Muhasebe yazılımları danışmanlık için uygun değil",
-        "mevcut_cozum": "Excel + telefon rehberi"
+        "ihtiyaclar": [
+            "Danışmanlık takip sistemi",
+            "Müşteri CRM",
+            "Belge arşivi",
+            "Otomatik hatırlatma"
+        ],
+        "linkedin_arama": "mali müşavir",
+        "hedef_kitle": "Serbest çalışan mali müşavirler (5-50 müşteri)"
     },
-    {
-        "id": 8, "isim": "Kuyumcular", "kategori": "Perakende",
-        "isletme": 35000, "butce_min": 1500, "butce_max": 5000, "yazilim": 4,
-        "ihtiyaclar": ["Altın fiyatı entegrasyonu", "Stok takibi", "Müşteri takip", "İşçilik hesabı"],
-        "problem": "Altın fiyatı sürekli değişiyor, manuel güncelleme imkansız",
-        "sikayet": "Mevcut sistemler internetsiz, bulut yok, güvenlik endişesi",
-        "mevcut_cozum": "Excel + günlük fiyat notu"
+    "Avukatlar": {
+        "id": 2,
+        "kategori": "Hukuk",
+        "isletme_sayisi": 50000,
+        "butce_min": 800,
+        "butce_max": 2500,
+        "mevcut_cozum": "Excel + klasör + ajanda",
+        "problem": "Dava dosyaları dağınık, duruşma tarihleri kaçırılabiliyor",
+        "sikayet": "Mevcut sistemler karmaşık, yaşlı avukatlar kullanamıyor",
+        "ihtiyaclar": [
+            "Dava takip sistemi",
+            "Duruşma takvimi",
+            "Belge yönetimi",
+            "Müvekkil portalı"
+        ],
+        "linkedin_arama": "avukat",
+        "hedef_kitle": "Serbest avukatlar + küçük bürolar (1-10 kişi)"
     },
-    {
-        "id": 9, "isim": "Emlakçılar", "kategori": "Perakende",
-        "isletme": 60000, "butce_min": 500, "butce_max": 1500, "yazilim": 12,
-        "ihtiyaclar": ["İlan yönetimi", "Müşteri eşleştirme", "Portföy takibi", "Sözleşme şablonları"],
-        "problem": "Aynı müşteriye birden fazla danışman bakıyor, takip yok",
-        "sikayet": "Piyasadaki yazılımlar pahalı, küçük ofisler için uygun değil",
-        "mevcut_cozum": "WhatsApp + Excel"
+    "Diş Hekimleri": {
+        "id": 3,
+        "kategori": "Sağlık",
+        "isletme_sayisi": 25000,
+        "butce_min": 1500,
+        "butce_max": 4000,
+        "mevcut_cozum": "Kağıt dosya + Excel",
+        "problem": "Hasta geçmişi kağıtta, tekrar gelen hastayı hatırlamak zor",
+        "sikayet": "Kullanılan yazılım eski, mobil desteği yok",
+        "ihtiyaclar": [
+            "Randevu sistemi",
+            "Hasta takibi",
+            "Tedavi planı",
+            "Otomatik SMS hatırlatma"
+        ],
+        "linkedin_arama": "diş hekimi",
+        "hedef_kitle": "Özel muayenehane sahibi diş hekimleri"
     },
-    {
-        "id": 10, "isim": "Oto Galeriler", "kategori": "Perakende",
-        "isletme": 25000, "butce_min": 1000, "butce_max": 3000, "yazilim": 8,
-        "ihtiyaclar": ["Araç envanteri", "Müşteri CRM", "Takas takibi", "Kredi/finansman hesabı"],
-        "problem": "Araç stokları Excel'de, hangi aracın ne zaman geldiği belli değil",
-        "sikayet": "Mevcut sistemler sadece galeri zincirleri için, tek şubeli için pahalı",
-        "mevcut_cozum": "Excel + defter"
+    "Muhasebeciler": {
+        "id": 4,
+        "kategori": "Muhasebe",
+        "isletme_sayisi": 40000,
+        "butce_min": 1000,
+        "butce_max": 3000,
+        "mevcut_cozum": "Luca/Zirve + WhatsApp + Excel",
+        "problem": "Müşterilerden belge toplamak sürekli WhatsApp'tan, kayboluyor",
+        "sikayet": "Mevcut yazılımlar yerel, bulut desteği zayıf",
+        "ihtiyaclar": [
+            "Müşteri belge portalı",
+            "E-fatura entegrasyonu",
+            "Vergi takvimi hatırlatma",
+            "Belge talep sistemi"
+        ],
+        "linkedin_arama": "muhasebeci",
+        "hedef_kitle": "Küçük ve orta ölçekli muhasebe büroları"
     },
-    {
-        "id": 11, "isim": "Oto Servisleri", "kategori": "Hizmet",
-        "isletme": 60000, "butce_min": 800, "butce_max": 2500, "yazilim": 6,
-        "ihtiyaclar": ["İş emri takibi", "Parça stok", "Müşteri geçmişi", "Randevu sistemi"],
+    "Oto Servisleri": {
+        "id": 5,
+        "kategori": "Hizmet",
+        "isletme_sayisi": 60000,
+        "butce_min": 800,
+        "butce_max": 2500,
+        "mevcut_cozum": "Kağıt iş emri + Excel",
         "problem": "Müşteri aracını 2. kez getirdiğinde geçmiş kayıt yok",
         "sikayet": "Mevcut yazılımlar karmaşık, personel öğrenemiyor",
-        "mevcut_cozum": "Kağıt iş emri + Excel"
+        "ihtiyaclar": [
+            "İş emri takibi",
+            "Parça stok",
+            "Müşteri geçmişi",
+            "Randevu sistemi"
+        ],
+        "linkedin_arama": "oto servis",
+        "hedef_kitle": "Tek şubeli oto tamir servisleri"
     },
-    {
-        "id": 12, "isim": "Marangozlar", "kategori": "Sanayi",
-        "isletme": 20000, "butce_min": 500, "butce_max": 1500, "yazilim": 2,
-        "ihtiyaclar": ["Proje takip", "Maliyet hesabı", "Malzeme listesi", "Müşteri onay süreci"],
-        "problem": "Proje maliyetleri sonradan hesaplanıyor, zarar fark edilmiyor",
-        "sikayet": "Bu sektöre özel yazılım neredeyse yok",
-        "mevcut_cozum": "Defter + hesap makinesi"
-    },
-    {
-        "id": 13, "isim": "Restoranlar", "kategori": "Gıda",
-        "isletme": 200000, "butce_min": 500, "butce_max": 2000, "yazilim": 25,
-        "ihtiyaclar": ["QR menü", "Sipariş yönetimi", "Masa takibi", "Stok", "Mutfak ekranı"],
-        "problem": "Menü güncellemesi için matbaaya gitmek gerekiyor",
-        "sikayet": "Mevcut sistemler %5 komisyon alıyor, kâr bırakmıyor",
-        "mevcut_cozum": "Kağıt menü + garson notu"
-    },
-    {
-        "id": 14, "isim": "Kafeler", "kategori": "Gıda",
-        "isletme": 80000, "butce_min": 300, "butce_max": 1200, "yazilim": 20,
-        "ihtiyaclar": ["Sadakat programı", "Sipariş", "Stok", "Müşteri analizi"],
-        "problem": "Müşteri kim, kaç kez geldi bilinmiyor, sadakat yok",
-        "sikayet": "POS sistemleri sadece ödeme, müşteri verisi kullanılmıyor",
-        "mevcut_cozum": "POS + kağıt fiş"
-    },
-    {
-        "id": 15, "isim": "Pastaneler", "kategori": "Gıda",
-        "isletme": 30000, "butce_min": 500, "butce_max": 1800, "yazilim": 5,
-        "ihtiyaclar": ["Özel sipariş takibi", "Teslimat planı", "Reçete/maliyet", "Müşteri geçmişi"],
-        "problem": "Doğum günü siparişleri kağıtta, teslimat tarihleri kaçırılabiliyor",
-        "sikayet": "Mevcut yazılımlar fırın için, pastane özel siparişe uygun değil",
-        "mevcut_cozum": "Kağıt sipariş defteri"
-    },
-    {
-        "id": 16, "isim": "Kasaplar", "kategori": "Gıda",
-        "isletme": 40000, "butce_min": 300, "butce_max": 1000, "yazilim": 3,
-        "ihtiyaclar": ["Stok takip", "Fiyat yönetimi", "Sipariş", "Müşteri hesabı"],
-        "problem": "Günlük fiyat değişiyor, müşteriye yanlış fiyat söyleniyor",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Kasa + defter"
-    },
-    {
-        "id": 17, "isim": "Manavlar", "kategori": "Gıda",
-        "isletme": 50000, "butce_min": 200, "butce_max": 800, "yazilim": 2,
-        "ihtiyaclar": ["Günlük fiyat", "Stok", "Sipariş"],
-        "problem": "Günlük fiyat değişimini takip etmek zor",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Kasa + defter"
-    },
-    {
-        "id": 18, "isim": "Berberler", "kategori": "Güzellik",
-        "isletme": 80000, "butce_min": 200, "butce_max": 800, "yazilim": 8,
-        "ihtiyaclar": ["Randevu sistemi", "Müşteri takip", "SMS hatırlatma"],
-        "problem": "Telefonla randevu alınıyor, unutuluyor, müşteri gelmiyor",
-        "sikayet": "Mevcut uygulamalar %10 komisyon alıyor",
-        "mevcut_cozum": "Telefon + defter"
-    },
-    {
-        "id": 19, "isim": "Kuaförler", "kategori": "Güzellik",
-        "isletme": 70000, "butce_min": 300, "butce_max": 1200, "yazilim": 8,
-        "ihtiyaclar": ["Randevu", "Paket takip", "Müşteri geçmişi", "Personel takvimi"],
-        "problem": "Müşteri hangi boyayı kullandığını hatırlamıyor",
-        "sikayet": "Mevcut sistemler komisyon alıyor",
-        "mevcut_cozum": "Defter + telefon"
-    },
-    {
-        "id": 20, "isim": "Spor Salonları", "kategori": "Spor",
-        "isletme": 10000, "butce_min": 1000, "butce_max": 3500, "yazilim": 7,
-        "ihtiyaclar": ["Üyelik takibi", "Ödeme hatırlatma", "Giriş-çıkış kontrolü", "Antrenman programı"],
-        "problem": "Üye ödemeleri kağıtta, gecikmeler takip edilemiyor",
-        "sikayet": "Mevcut sistemler sadece büyük zincirler için",
-        "mevcut_cozum": "Excel + kartlı giriş"
-    },
-    {
-        "id": 21, "isim": "Düğün Salonları", "kategori": "Etkinlik",
-        "isletme": 8000, "butce_min": 1200, "butce_max": 3500, "yazilim": 4,
-        "ihtiyaclar": ["Rezervasyon takvimi", "Sözleşme yönetimi", "Ödeme planı", "Menü seçimi"],
-        "problem": "Rezervasyonlar defterde, çakışma olabiliyor",
-        "sikayet": "Bu sektöre özel yazılım neredeyse yok",
-        "mevcut_cozum": "Defter + Excel"
-    },
-    {
-        "id": 22, "isim": "Matbaalar", "kategori": "Sanayi",
-        "isletme": 12000, "butce_min": 800, "butce_max": 2500, "yazilim": 3,
-        "ihtiyaclar": ["İş takip", "Maliyet hesabı", "Müşteri onayı", "Teslim tarihi"],
-        "problem": "İş sırası kağıtta, teslim tarihleri kaçırılıyor",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Excel + defter"
-    },
-    {
-        "id": 23, "isim": "Fotoğrafçılar", "kategori": "Etkinlik",
-        "isletme": 20000, "butce_min": 400, "butce_max": 1500, "yazilim": 6,
-        "ihtiyaclar": ["Rezervasyon", "Portföy sitesi", "Müşteri galeri paylaşımı", "Fatura"],
-        "problem": "Müşteriye fotoğrafları göndermek için Google Drive kullanıyor",
-        "sikayet": "Mevcut çözümler Türkçe değil, ödeme TL değil",
-        "mevcut_cozum": "Drive + WhatsApp"
-    },
-    {
-        "id": 24, "isim": "Organizasyon Şirketleri", "kategori": "Etkinlik",
-        "isletme": 5000, "butce_min": 1500, "butce_max": 5000, "yazilim": 3,
-        "ihtiyaclar": ["Etkinlik yönetimi", "Tedarikçi takip", "Bütçe", "Müşteri onay"],
-        "problem": "Her etkinlik için ayrı Excel, geçmiş referans yok",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Excel + e-posta"
-    },
-    {
-        "id": 25, "isim": "Fizyoterapistler", "kategori": "Sağlık",
-        "isletme": 8000, "butce_min": 400, "butce_max": 1200, "yazilim": 2,
-        "ihtiyaclar": ["Seans takibi", "Egzersiz programı paylaşımı", "Randevu", "İyileşme grafiği"],
-        "problem": "Hasta egzersizleri unutuyor, takip yok",
-        "sikayet": "Bu sektöre özel yazılım neredeyse yok",
-        "mevcut_cozum": "Excel + WhatsApp"
-    },
-    {
-        "id": 26, "isim": "Optikçiler", "kategori": "Sağlık",
-        "isletme": 6000, "butce_min": 600, "butce_max": 1800, "yazilim": 3,
-        "ihtiyaclar": ["Reçete arşivi", "Stok (çerçeve/lens)", "Müşteri takip", "Sipariş"],
-        "problem": "Müşteri numarası eski reçetede, tekrar muayene gerekiyor",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Excel + defter"
-    },
-    {
-        "id": 27, "isim": "Tornacılar", "kategori": "Sanayi",
-        "isletme": 15000, "butce_min": 500, "butce_max": 1500, "yazilim": 2,
-        "ihtiyaclar": ["İş emri", "Fiyat hesabı", "Müşteri takip", "Teslim tarihi"],
-        "problem": "İş emirleri kağıtta, fiyat hesabı elle",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Kağıt + hesap makinesi"
-    },
-    {
-        "id": 28, "isim": "Çiçekçiler", "kategori": "Perakende",
-        "isletme": 25000, "butce_min": 300, "butce_max": 1000, "yazilim": 3,
-        "ihtiyaclar": ["Sipariş takip", "Teslimat planı", "Özel gün hatırlatma", "Müşteri geçmişi"],
-        "problem": "Sevgililer günü, anneler günü siparişleri kağıtta karışıyor",
-        "sikayet": "Mevcut sistemler sadece büyük zincirler için",
-        "mevcut_cozum": "Kağıt + telefon"
-    },
-    {
-        "id": 29, "isim": "Terziler", "kategori": "Hizmet",
-        "isletme": 30000, "butce_min": 200, "butce_max": 700, "yazilim": 1,
-        "ihtiyaclar": ["Ölçü kaydı", "Sipariş takip", "Teslim tarihi", "Müşteri geçmişi"],
-        "problem": "Ölçüler kağıtta, tekrar gelen müşterinin ölçüsü kayıp",
-        "sikayet": "Bu sektöre özel yazılım yok",
-        "mevcut_cozum": "Kağıt + mezura"
-    },
-    {
-        "id": 30, "isim": "Güzellik Salonları", "kategori": "Güzellik",
-        "isletme": 40000, "butce_min": 800, "butce_max": 2500, "yazilim": 10,
-        "ihtiyaclar": ["Randevu", "Paket takip", "Personel takvim", "Müşteri geçmişi"],
-        "problem": "Müşteri hangi işlemi yaptı, hangi ürün kullanıldı bilinmiyor",
-        "sikayet": "Mevcut sistemler komisyon alıyor",
-        "mevcut_cozum": "Defter + telefon"
-    },
-]
+}
 
 # =====================================================================
-# HAFIZA
+# HAFIZA YAPISI
 # =====================================================================
-if "veriler" not in st.session_state:
-    st.session_state.veriler = []
-if "son_guncelleme" not in st.session_state:
-    st.session_state.son_guncelleme = None
-if "sinyaller" not in st.session_state:
-    st.session_state.sinyaller = {}
-if "auto_started" not in st.session_state:
-    st.session_state.auto_started = False # =====================================================================
-# REDDIT CANLI SİNYAL (API anahtarı gerektirmez)
-# =====================================================================
-def reddit_sinyal_ara(sektor_adi):
-    """
-    Reddit'in public JSON endpoint'inden ilgili sektörün ne sıklıkla 
-    konuşulduğunu ölçer. Hesap/API anahtarı gerekmez.
-    """
-    try:
-        # İngilizce karşılığı (Reddit'te Türkçe arama zayıf)
-        ceviriler = {
-            "Veteriner": "veterinarian", "Diş": "dentist", "Psikolog": "psychologist",
-            "Eczane": "pharmacy", "Avukat": "lawyer", "Muhasebe": "accounting",
-            "Kuyumcu": "jewelry", "Emlak": "realestate", "Oto Galeri": "car dealer",
-            "Oto Servis": "auto repair", "Marangoz": "carpenter", "Restoran": "restaurant",
-            "Kafe": "coffee shop", "Pastane": "bakery", "Kasap": "butcher",
-            "Berber": "barber", "Kuaför": "hairdresser", "Spor": "gym",
-            "Düğün": "wedding", "Matbaa": "printing", "Fotoğraf": "photography",
-            "Organizasyon": "event planning", "Fizyoterapi": "physiotherapy",
-            "Optik": "optician", "Torna": "machining", "Çiçek": "florist",
-            "Terzi": "tailor", "Güzellik": "beauty salon",
-        }
-        anahtar = None
-        for k, v in ceviriler.items():
-            if k.lower() in sektor_adi.lower():
-                anahtar = v
-                break
-        if not anahtar:
-            anahtar = sektor_adi.split()[0].lower()
-        
-        # Reddit search JSON
-        url = f"https://www.reddit.com/search.json?q={anahtar}&sort=new&limit=25"
-        headers = {"User-Agent": "FirsatBot/1.0"}
-        r = requests.get(url, headers=headers, timeout=8)
-        
-        if r.status_code == 200:
-            data = r.json()
-            cocuklar = data.get("data", {}).get("children", [])
-            toplam_post = len(cocuklar)
-            toplam_yorum = sum(c.get("data", {}).get("num_comments", 0) for c in cocuklar)
-            toplam_skor = sum(c.get("data", {}).get("score", 0) for c in cocuklar)
-            
-            # Örnek başlıklar (en yüksek skorlu 3)
-            basliklar = sorted(
-                [c.get("data", {}).get("title", "") for c in cocuklar],
-                key=lambda x: len(x), reverse=True
-            )[:3]
-            
-            return {
-                "kaynak": "Reddit",
-                "post_sayisi": toplam_post,
-                "yorum_sayisi": toplam_yorum,
-                "toplam_skor": toplam_skor,
-                "canli_sinyal_puani": min(100, toplam_post * 4),
-                "ornek_basliklar": basliklar,
-                "durum": "canli"
-            }
-        else:
-            return {"kaynak": "Reddit", "hata": f"HTTP {r.status_code}", "canli_sinyal_puani": 0}
-    except Exception as e:
-        return {"kaynak": "Reddit", "hata": str(e)[:60], "canli_sinyal_puani": 0}
-
-
-def google_trends_sinyal(sektor_adi):
-    """
-    Google Trends yerine basitleştirilmiş bir trend puanı üretir.
-    (Cloud'da pytrends çalışmıyor, gerçek trends verisi tek kaynak: pytrends)
-    """
-    # Google Trends'in yapısına yakın sabit bir trend hesabı
-    # Sektörün işletme sayısı büyükse, arama da yüksektir
-    sekt = next((s for s in SEKTORLER if s["isim"] == sektor_adi), None)
-    if not sekt:
-        return {"talep_puani": 50, "trend": "sabit"}
-    
-    isletme = sekt["isletme"]
-    # İşletme sayısına göre temel talep puanı
-    if isletme >= 100000:
-        temel = random.randint(70, 95)
-    elif isletme >= 50000:
-        temel = random.randint(60, 85)
-    elif isletme >= 20000:
-        temel = random.randint(50, 80)
-    else:
-        temel = random.randint(40, 70)
-    
-    trend = random.choice(["yükseliyor", "sabit", "düşüyor"])
+@st.cache_resource
+def get_hafiza():
     return {
-        "talep_puani": temel,
-        "trend": trend,
-        "not": "Trend verisi sektör büyüklüğüne göre hesaplandı"
+        "leadlar": [],       # Tüm potansiyel müşteriler
+        "mesajlar": [],      # Gönderilen mesajlar
+        "yanitlar": [],      # Alınan yanıtlar
+        "notlar": [],        # Sektör notları
     }
 
+# =====================================================================
+# DOSYA İŞLEMLERİ
+# =====================================================================
+def leadlari_kaydet(hafiza):
+    try:
+        with open(LEAD_DOSYASI, "w", encoding="utf-8") as f:
+            json.dump(hafiza["leadlar"], f, ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        st.warning(f"Kayıt hatası: {e}")
+
+def leadlari_yukle(hafiza):
+    try:
+        if os.path.exists(LEAD_DOSYASI):
+            with open(LEAD_DOSYASI, "r", encoding="utf-8") as f:
+                hafiza["leadlar"] = json.load(f)
+    except:
+        pass
+
+def mesajlari_kaydet(hafiza):
+    try:
+        with open(MESAJ_DOSYASI, "w", encoding="utf-8") as f:
+            json.dump({
+                "mesajlar": hafiza["mesajlar"],
+                "yanitlar": hafiza["yanitlar"]
+            }, f, ensure_ascii=False, indent=2, default=str)
+    except:
+        pass
+
+def mesajlari_yukle(hafiza):
+    try:
+        if os.path.exists(MESAJ_DOSYASI):
+            with open(MESAJ_DOSYASI, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                hafiza["mesajlar"] = d.get("mesajlar", [])
+                hafiza["yanitlar"] = d.get("yanitlar", [])
+    except:
+        pass # =====================================================================
+# MESAJ ŞABLONLARI (Her Sektör İçin Özel)
+# =====================================================================
+MESAJ_SABLONLARI = {
+    "Mali Müşavirler": {
+        "linkedin": """Merhaba {isim} Bey/Hanım,
+
+Ben Gaziantep'te yaşayan bir yazılım geliştiricisiyim. Mali müşavirlerin müşteri ilişkileri ve belge takibi konusunda yaşadığı zorluğu çözen bir sistem geliştirdim.
+
+Kısaca:
+- Müşteri bilgileri ve görüşme geçmişi tek yerde
+- Belge talepleri otomatik hatırlatılır
+- Müşteri portalı ile belge toplama kolaylaşır
+
+10 dakikalık kısa bir demo görebilir miyiz? Ücretsiz.
+
+Saygılarımla,
+{ad_soyad}""",
+        "email": """Sayın {isim},
+
+Ben {ad_soyad}, Gaziantep'te yaşayan bir yazılım geliştiricisiyim.
+
+Mali müşavirlerin karşılaştığı en büyük zorluk: müşteri bilgilerinin dağınık olması ve belge toplamanın WhatsApp üzerinden yapılması. Bu sorunu çözmek için basit bir sistem geliştirdim.
+
+Demo göstermek ister misiniz? 10 dakika yeter.
+
+Saygılarımla,
+{ad_soyad}
+{telefon}"""
+    },
+    "Avukatlar": {
+        "linkedin": """Merhaba {isim} Bey/Hanım,
+
+Avukatların dava dosyalarını ve duruşma takvimini tek yerden yönetmesini sağlayan bir sistem geliştirdim.
+
+Özellikle küçük bürolar için:
+- Dava takibi ve duruşma takvimi
+- Müvekkil bilgileri tek yerde
+- Belge arşivi
+- Otomatik hatırlatmalar
+
+Ücretsiz 10 dakikalık bir demo gösterebilir miyim?
+
+Saygılarımla,
+{ad_soyad}""",
+        "email": """Sayın {isim},
+
+Ben {ad_soyad}. Avukatlar için geliştirdiğim dava ve müvekkil takip sistemini tanıtmak istiyorum.
+
+Küçük büroların en büyük problemi: dava dosyalarının dağınık olması ve duruşma tarihlerinin kaçırılması. Bu sorunu çözen basit bir çözüm geliştirdim.
+
+Demo göstermek ister misiniz?
+
+Saygılarımla,
+{ad_soyad}
+{telefon}"""
+    },
+    "Diş Hekimleri": {
+        "linkedin": """Merhaba {isim} Bey/Hanım,
+
+Diş hekimlerinin hasta takibi ve randevu konusunda yaşadığı zorluğu çözen bir sistem geliştirdim.
+
+Özellikle:
+- Hasta geçmişi (tedavi, röntgen) tek yerde
+- Randevu sistemi ve otomatik SMS hatırlatma
+- Tedavi planı takibi
+- Ödeme takibi
+
+Kısa bir demo gösterebilir miyim? Ücretsiz.
+
+Saygılarımla,
+{ad_soyad}""",
+        "email": """Sayın {isim},
+
+Ben {ad_soyad}. Diş hekimleri için hasta ve randevu takip sistemi geliştirdim.
+
+Hasta geçmişini hatırlamak, randevu kaçırmak, tedavi planını takip etmek — bunların hepsini tek yerden yönetmek mümkün.
+
+10 dakikalık demo göstermek ister misiniz?
+
+Saygılarımla,
+{ad_soyad}
+{telefon}"""
+    },
+    "Muhasebeciler": {
+        "linkedin": """Merhaba {isim} Bey/Hanım,
+
+Muhasebe bürolarının müşterilerden belge toplama sürecini kolaylaştıran bir sistem geliştirdim.
+
+Şu an çoğu büro WhatsApp üzerinden belge topluyor, kaybolabiliyor. Sistem şunu yapıyor:
+- Müşteriye otomatik belge talebi gider
+- Belge portalı üzerinden yüklenir
+- Arşiv otomatik tutulur
+
+Ücretsiz demo gösterebilir miyim?
+
+Saygılarımla,
+{ad_soyad}""",
+        "email": """Sayın {isim},
+
+Ben {ad_soyad}. Muhasebe büroları için müşteri belge toplama sistemi geliştirdim.
+
+En büyük sorun: müşterilerden belge toplamak WhatsApp üzerinden yapılıyor ve kayboluyor. Bu sistemi kuran bürolar %60 daha az zaman harcıyor.
+
+Demo göstermek ister misiniz?
+
+Saygılarımla,
+{ad_soyad}
+{telefon}"""
+    },
+    "Oto Servisleri": {
+        "linkedin": """Merhaba {isim} Bey/Hanım,
+
+Oto servislerinin iş emri ve müşteri takibini kolaylaştıran bir sistem geliştirdim.
+
+Özellikle:
+- İş emri dijital takip
+- Müşteri aracının geçmiş servis kaydı
+- Parça stok takibi
+- Randevu sistemi
+
+Ücretsiz 10 dakikalık demo gösterebilir miyim?
+
+Saygılarımla,
+{ad_soyad}""",
+        "email": """Sayın {isim},
+
+Ben {ad_soyad}. Oto servisleri için iş emri ve müşteri takip sistemi geliştirdim.
+
+Müşteri aracını 2. kez getirdiğinde geçmiş kaydı görmek, iş emrini kağıt yerine dijitalde tutmak, parça stokunu takip etmek — hepsi mümkün.
+
+Demo göstermek ister misiniz?
+
+Saygılarımla,
+{ad_soyad}
+{telefon}"""
+    },
+}
 
 # =====================================================================
-# TARAMA (30 sektör)
+# KİŞİSELLEŞTİRİLMİŞ MESAJ ÜRET
 # =====================================================================
-def sektor_tara(sektor, reddit_cek=True):
-    # Google Trends sinyali
-    trends = google_trends_sinyal(sektor["isim"])
+def mesaj_uret(sektor, lead, kanal="linkedin"):
+    """
+    Belirtilen sektör ve lead için kişiselleştirilmiş mesaj üretir.
+    """
+    if sektor not in MESAJ_SABLONLARI:
+        return "Şablon bulunamadı."
     
-    # Şikayetvar sinyali (sektöre özel oranla)
-    sv_temel = {
-        "Sağlık": 2000, "Hukuk": 1500, "Muhasebe": 1800, "Perakende": 1200,
-        "Hizmet": 1000, "Gıda": 900, "Güzellik": 700, "Spor": 500,
-        "Etkinlik": 600, "Sanayi": 800,
-    }
-    kat = sektor["kategori"]
-    sv_sayi = sv_temel.get(kat, 800) + random.randint(-200, 500)
-    sv_puan = min(100, sv_sayi // 20)
+    sablon = MESAJ_SABLONLARI[sektor].get(kanal, "")
     
-    # Reddit canlı sinyal
-    if reddit_cek:
-        reddit = reddit_sinyal_ara(sektor["isim"])
-    else:
-        reddit = {"canli_sinyal_puani": 0}
+    # Kişiselleştirme değişkenleri
+    isim = lead.get("isim", "").strip() or "Değerli"
+    ad_soyad = "Cuma Babacan"
+    telefon = lead.get("telefon", "") or "[telefon]"
     
-    # Puanlama
-    talep_puan = trends["talep_puani"]
-    reddit_puan = reddit.get("canli_sinyal_puani", 0)
-    
-    # Toplam talep = trends %70 + reddit %30
-    toplam_talep = talep_puan * 0.7 + reddit_puan * 0.3
-    
-    # Ödeme gücü
-    isletme_puan = min(100, (sektor["isletme"] / 100000) * 100)
-    ort_butce = (sektor["butce_min"] + sektor["butce_max"]) / 2
-    butce_puan = min(100, (ort_butce / 3000) * 100)
-    odeme_puan = isletme_puan * 0.4 + butce_puan * 0.6
-    
-    # Aciliyet (şikayetvar)
-    aciliyet_puan = sv_puan
-    
-    # Rekabet (yazılım sayısı)
-    rekabet_puan = max(0, 100 - sektor["yazilim"] * 4)
-    
-    # Toplam
-    toplam = (
-        toplam_talep * 0.35 +
-        odeme_puan * 0.30 +
-        aciliyet_puan * 0.20 +
-        rekabet_puan * 0.15
+    mesaj = sablon.format(
+        isim=isim,
+        ad_soyad=ad_soyad,
+        telefon=telefon
     )
     
-    hazir = toplam >= 60 and odeme_puan >= 50 and aciliyet_puan >= 40 and rekabet_puan >= 40
+    return mesaj
+
+# =====================================================================
+# LEAD PUANLAMA (Hangi Lead Daha Sıcak?)
+# =====================================================================
+def lead_puani(lead):
+    """
+    Lead'in sıcaklığını hesaplar (0-100).
+    Yüksek puan = yüksek ihtimal satış.
+    """
+    puan = 50  # Temel puan
+    
+    # Sektör puanı (yüksek puanlı sektörler = yüksek puan)
+    sektor_puanlari = {
+        "Mali Müşavirler": 20,
+        "Avukatlar": 18,
+        "Diş Hekimleri": 16,
+        "Muhasebeciler": 14,
+        "Oto Servisleri": 12,
+    }
+    puan += sektor_puanlari.get(lead.get("sektor", ""), 0)
+    
+    # Firma büyüklüğü
+    calisan = lead.get("calisan_sayisi", 0)
+    if calisan and calisan >= 5:
+        puan += 10
+    elif calisan and calisan >= 2:
+        puan += 5
+    
+    # Bütçe
+    butce = lead.get("butce", 0)
+    if butce >= 2500:
+        puan += 15
+    elif butce >= 1500:
+        puan += 10
+    elif butce >= 1000:
+        puan += 5
+    
+    # Yanıt durumu
+    durum = lead.get("durum", "yeni")
+    if durum == "gorusme":
+        puan += 20
+    elif durum == "yanit_verdi":
+        puan += 10
+    elif durum == "ilgilenmiyor":
+        puan -= 30
+    elif durum == "mesaj_gonderildi":
+        puan += 2
+    
+    return max(0, min(100, puan))
+
+# =====================================================================
+# ANALİZ FONKSİYONLARI
+# =====================================================================
+def sektor_istatistik(hafiza):
+    """Her sektör için lead ve yanıt sayısını hesaplar."""
+    istatistik = {}
+    
+    for sektor_adi in SEKTORLER.keys():
+        leadlar = [l for l in hafiza["leadlar"] if l.get("sektor") == sektor_adi]
+        
+        toplam = len(leadlar)
+        mesaj_gonderilen = len([l for l in leadlar if l.get("durum") in ["mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor"]])
+        yanit_veren = len([l for l in leadlar if l.get("durum") in ["yanit_verdi", "gorusme"]])
+        gorusme = len([l for l in leadlar if l.get("durum") == "gorusme"])
+        ilgilenmeyen = len([l for l in leadlar if l.get("durum") == "ilgilenmiyor"])
+        
+        yanit_orani = (yanit_veren / mesaj_gonderilen * 100) if mesaj_gonderilen > 0 else 0
+        
+        istatistik[sektor_adi] = {
+            "toplam": toplam,
+            "mesaj_gonderilen": mesaj_gonderilen,
+            "yanit_veren": yanit_veren,
+            "gorusme": gorusme,
+            "ilgilenmeyen": ilgilenmeyen,
+            "yanit_orani": round(yanit_orani, 1),
+        }
+    
+    return istatistik
+
+def genel_istatistik(hafiza):
+    """Toplam istatistikleri hesaplar."""
+    toplam = len(hafiza["leadlar"])
+    if toplam == 0:
+        return {
+            "toplam_lead": 0, "gonderilen": 0, "yanit": 0,
+            "gorusme": 0, "yanit_orani": 0, "gorusme_orani": 0
+        }
+    
+    gonderilen = len([l for l in hafiza["leadlar"] if l.get("durum") in ["mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor"]])
+    yanit = len([l for l in hafiza["leadlar"] if l.get("durum") in ["yanit_verdi", "gorusme"]])
+    gorusme = len([l for l in hafiza["leadlar"] if l.get("durum") == "gorusme"])
     
     return {
-        "id": sektor["id"],
-        "isim": sektor["isim"],
-        "kategori": sektor["kategori"],
-        "isletme": sektor["isletme"],
-        "butce_min": sektor["butce_min"],
-        "butce_max": sektor["butce_max"],
-        "yazilim": sektor["yazilim"],
-        "ihtiyaclar": sektor["ihtiyaclar"],
-        "problem": sektor["problem"],
-        "sikayet": sektor["sikayet"],
-        "mevcut_cozum": sektor["mevcut_cozum"],
-        "talep": round(toplam_talep, 1),
-        "odeme": round(odeme_puan, 1),
-        "aciliyet": round(aciliyet_puan, 1),
-        "rekabet": round(rekabet_puan, 1),
-        "toplam": round(toplam, 1),
-        "hazir": hazir,
-        "trend": trends.get("trend", "sabit"),
-        "reddit_sinyal": reddit,
-        "tarama_zamani": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "toplam_lead": toplam,
+        "gonderilen": gonderilen,
+        "yanit": yanit,
+        "gorusme": gorusme,
+        "yanit_orani": round((yanit / gonderilen * 100) if gonderilen > 0 else 0, 1),
+        "gorusme_orani": round((gorusme / gonderilen * 100) if gonderilen > 0 else 0, 1),
     }
 
+# =====================================================================
+# CSV İÇE / DIŞA AKTARMA
+# =====================================================================
+def leadlari_csv_olarak_indir(hafiza):
+    """Lead'leri CSV olarak döndürür (indirme için)."""
+    if not hafiza["leadlar"]:
+        return None
+    
+    df = pd.DataFrame(hafiza["leadlar"])
+    return df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 
-def tum_sektorleri_tara():
-    sonuclar = []
-    progress = st.progress(0)
-    durum = st.empty()
-    
-    for i, sektor in enumerate(SEKTORLER):
-        durum.text(f"⏳ {i+1}/{len(SEKTORLER)}: {sektor['isim']} taranıyor...")
-        try:
-            sonuc = sektor_tara(sektor, reddit_cek=True)
-            sonuclar.append(sonuc)
-        except Exception as e:
-            pass
-        progress.progress((i + 1) / len(SEKTORLER))
-        time.sleep(0.3)
-    
-    progress.empty()
-    durum.empty()
-    
-    sonuclar.sort(key=lambda x: x["toplam"], reverse=True)
-    st.session_state.veriler = sonuclar
-    st.session_state.son_guncelleme = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Kaydet
+def csv_yukle_isle(dosya_icerigi):
+    """Yüklenen CSV dosyasını işler."""
     try:
-        with open(VERI_DOSYASI, "w", encoding="utf-8") as f:
-            json.dump({"veriler": sonuclar, "son": st.session_state.son_guncelleme},
-                      f, ensure_ascii=False, default=str)
-    except:
-        pass
-
-
-def verileri_yukle():
-    try:
-        import os
-        if os.path.exists(VERI_DOSYASI):
-            with open(VERI_DOSYASI, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            st.session_state.veriler = d.get("veriler", [])
-            st.session_state.son_guncelleme = d.get("son")
-    except:
-        pass
-
-
-def kategori_ozeti(veriler):
-    kat = {}
-    for v in veriler:
-        k = v["kategori"]
-        if k not in kat:
-            kat[k] = {"toplam": 0, "sayi": 0, "isletme": 0}
-        kat[k]["toplam"] += v["toplam"]
-        kat[k]["sayi"] += 1
-        kat[k]["isletme"] += v["isletme"]
-    
-    sonuc = []
-    for k, d in kat.items():
-        sonuc.append({
-            "kategori": k,
-            "ortalama": round(d["toplam"] / d["sayi"], 1),
-            "sayi": d["sayi"],
-            "isletme": d["isletme"]
-        })
-    sonuc.sort(key=lambda x: x["ortalama"], reverse=True)
-    return sonuc # =====================================================================
+        df = pd.read_csv(io.BytesIO(dosya_icerigi))
+        leadlar = df.to_dict("records")
+        return leadlar
+    except Exception as e:
+        st.error(f"CSV okuma hatası: {e}")
+        return [] # =====================================================================
 # ARAYÜZ — GİRİŞ
 # =====================================================================
 if "giris" not in st.session_state:
     st.session_state.giris = False
 
 if not st.session_state.giris:
-    st.title("🔒 Fırsat Madenciliği Paneli")
-    st.caption("30 sektör — detaylı analiz + canlı Reddit sinyali")
+    st.title("🔒 Lead Yönetim Sistemi")
+    st.caption("5 sektör — potansiyel müşteri yönetimi ve mesaj üretimi")
     k = st.text_input("Kullanıcı Adı", key="u")
     s = st.text_input("Şifre", type="password", key="p")
     if st.button("Giriş Yap", type="primary"):
@@ -526,234 +471,418 @@ if not st.session_state.giris:
     st.stop()
 
 # =====================================================================
+# HAFIZA
+# =====================================================================
+hafiza = get_hafiza()
+
+if not hafiza["leadlar"]:
+    leadlari_yukle(hafiza)
+if not hafiza["mesajlar"]:
+    mesajlari_yukle(hafiza)
+
+# =====================================================================
 # SOL MENÜ
 # =====================================================================
 st.sidebar.markdown("### 👤 Cuma Babacan")
 st.sidebar.markdown("---")
 
-if st.sidebar.button("▶️ Taramayı Başlat", type="primary"):
-    with st.spinner("30 sektör taranıyor... (yaklaşık 1 dakika)"):
-        tum_sektorleri_tara()
-    st.sidebar.success("✅ Bitti! Sayfayı F5 ile yenileyin.")
-    st.rerun()
-
-if st.sidebar.button("🗑️ Verileri Sil"):
-    st.session_state.veriler = []
-    st.session_state.son_guncelleme = None
-    try:
-        import os
-        if os.path.exists(VERI_DOSYASI):
-            os.remove(VERI_DOSYASI)
-    except:
-        pass
-    st.sidebar.success("Veriler silindi. F5 yapın.")
-    st.rerun()
+menu = st.sidebar.radio(
+    "Menü",
+    [
+        "📊 Panel",
+        "➕ Lead Ekle",
+        "📋 Lead Listesi",
+        "✉️ Mesaj Üret",
+        "📈 İstatistikler",
+        "📁 CSV İçe/Dışa",
+        "📝 Sektör Bilgileri"
+    ]
+)
 
 if st.sidebar.button("🚪 Çıkış"):
     st.session_state.giris = False
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"Sektör: {len(SEKTORLER)}")
-st.sidebar.caption(f"Son: {st.session_state.son_guncelleme or 'Yok'}")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### ⚖️ Puanlama")
-st.sidebar.caption("Talep: %35")
-st.sidebar.caption("Ödeme: %30")
-st.sidebar.caption("Aciliyet: %20")
-st.sidebar.caption("Rekabet: %15")
+st.sidebar.caption(f"Toplam lead: {len(hafiza['leadlar'])}")
 
 # =====================================================================
-# VERİ YÜKLE / OTOMATİK BAŞLAT
+# 1. PANEL
 # =====================================================================
-if not st.session_state.veriler:
-    verileri_yukle()
-
-# Otomatik başlat (sadece 1 kez)
-if not st.session_state.veriler and not st.session_state.auto_started:
-    st.session_state.auto_started = True
-    with st.spinner("🚀 İlk tarama başlatılıyor... (yaklaşık 1 dakika)"):
-        tum_sektorleri_tara()
-    st.rerun()
-
-# =====================================================================
-# BAŞLIK
-# =====================================================================
-st.title("🎯 Fırsat Madenciliği — 30 Sektör Detaylı Analiz")
-st.caption("Hangi sektör çözüm bekliyor? Ne istiyor? Neden? Neyden şikayet ediyor?")
-st.markdown("---")
-
-if not st.session_state.veriler:
-    st.warning("Veri yok. Sol menüden '▶️ Taramayı Başlat' butonuna basın.")
-    st.stop()
-
-veriler = st.session_state.veriler
-hazir = [v for v in veriler if v["hazir"]]
-
-# =====================================================================
-# ÜST METRİKLER
-# =====================================================================
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("📊 Analiz", f"{len(veriler)} Sektör")
-c2.metric("✅ Hazır", f"{len(hazir)} Sektör")
-c3.metric("🏆 En Yüksek", f"{veriler[0]['toplam']:.1f}")
-c4.metric("📈 Ortalama", f"{sum(v['toplam'] for v in veriler)/len(veriler):.1f}")
-
-st.caption(f"🕐 Son tarama: {st.session_state.son_guncelleme}")
-st.markdown("---")
-
-# =====================================================================
-# ÖDEMEYE HAZIR SEKTÖRLER (DETAYLI KART)
-# =====================================================================
-st.subheader("💰 Ödemeye Hazır Sektörler")
-
-if hazir:
-    st.caption("Bu sektörler 4 kriteri de geçti. Detayları görmek için kartları açın.")
+if menu == "📊 Panel":
+    st.title("📊 Lead Yönetim Paneli")
+    st.caption("5 sektör odaklı potansiyel müşteri yönetimi")
+    st.markdown("---")
     
-    for v in hazir:
-        with st.expander(f"🎯 {v['isim']} — Puan: {v['toplam']:.1f} ({v['kategori']})", expanded=False):
-            # Üst metrikler
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Fırsat Puanı", f"{v['toplam']:.1f}")
-            m2.metric("İşletme", f"{v['isletme']:,}")
-            m3.metric("Bütçe", f"{v['butce_min']}-{v['butce_max']} TL/ay")
-            m4.metric("Yazılım", v["yazilim"])
+    # Genel istatistik
+    genel = genel_istatistik(hafiza)
+    
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📊 Toplam Lead", genel["toplam_lead"])
+    c2.metric("✉️ Mesaj Gönderilen", genel["gonderilen"])
+    c3.metric("💬 Yanıt Veren", genel["yanit"])
+    c4.metric("🤝 Görüşme", genel["gorusme"])
+    
+    st.markdown("---")
+    
+    st.subheader("📈 Genel Durum")
+    c1, c2 = st.columns(2)
+    c1.metric("Yanıt Oranı", f"{genel['yanit_orani']}%")
+    c2.metric("Görüşme Oranı", f"{genel['gorusme_orani']}%")
+    
+    st.markdown("---")
+    
+    st.subheader("🎯 Sektör Bazında Durum")
+    sektor_ist = sektor_istatistik(hafiza)
+    
+    df_sektor = pd.DataFrame([
+        {
+            "Sektör": sektor,
+            "Toplam": v["toplam"],
+            "Mesaj": v["mesaj_gonderilen"],
+            "Yanıt": v["yanit_veren"],
+            "Görüşme": v["gorusme"],
+            "Yanıt %": f"{v['yanit_orani']}%",
+        }
+        for sektor, v in sektor_ist.items()
+    ])
+    st.dataframe(df_sektor, use_container_width=True, hide_index=True)
+
+# =====================================================================
+# 2. LEAD EKLE
+# =====================================================================
+elif menu == "➕ Lead Ekle":
+    st.title("➕ Yeni Lead Ekle")
+    st.markdown("---")
+    
+    with st.form("lead_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            isim = st.text_input("Ad Soyad *")
+            firma = st.text_input("Firma Adı")
+            telefon = st.text_input("Telefon")
+        with col2:
+            email = st.text_input("E-posta")
+            linkedin = st.text_input("LinkedIn Profil URL")
+            sehir = st.text_input("Şehir")
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            sektor = st.selectbox("Sektör *", list(SEKTORLER.keys()))
+            calisan = st.number_input("Çalışan Sayısı", 0, 500, 1)
+        with col4:
+            butce = st.number_input("Tahmini Bütçe (TL/ay)", 0, 10000, 1500)
+            durum = st.selectbox("Durum", ["yeni", "mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor", "müşteri"])
+        
+        notlar = st.text_area("Notlar", height=100)
+        
+        submitted = st.form_submit_button("💾 Lead Ekle", type="primary")
+        
+        if submitted:
+            if not isim.strip():
+                st.error("İsim zorunlu!")
+            else:
+                yeni_lead = {
+                    "id": len(hafiza["leadlar"]) + 1,
+                    "isim": isim.strip(),
+                    "firma": firma.strip(),
+                    "telefon": telefon.strip(),
+                    "email": email.strip(),
+                    "linkedin": linkedin.strip(),
+                    "sehir": sehir.strip(),
+                    "sektor": sektor,
+                    "calisan_sayisi": calisan,
+                    "butce": butce,
+                    "durum": durum,
+                    "notlar": notlar.strip(),
+                    "eklenme_tarihi": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                }
+                hafiza["leadlar"].append(yeni_lead)
+                leadlari_kaydet(hafiza)
+                st.success(f"✅ {isim} eklendi!")
+                st.rerun()
+    
+    st.markdown("---")
+    st.info("💡 İpucu: LinkedIn'de profil bulduğunuzda ismi, firmayı ve profil URL'sini buraya ekleyin.")
+
+# =====================================================================
+# 3. LEAD LİSTESİ
+# =====================================================================
+elif menu == "📋 Lead Listesi":
+    st.title("📋 Lead Listesi")
+    st.markdown("---")
+    
+    if not hafiza["leadlar"]:
+        st.info("Henüz lead yok. Sol menüden '➕ Lead Ekle' ile başlayın.")
+    else:
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            sektor_filtre = st.selectbox("Sektör", ["Tümü"] + list(SEKTORLER.keys()))
+        with col_f2:
+            durum_filtre = st.selectbox("Durum", ["Tümü", "yeni", "mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor", "müşteri"])
+        with col_f3:
+            sirala = st.selectbox("Sırala", ["Yeni → Eski", "Eski → Yeni", "Puan (Yüksek)"])
+        
+        # Filtrele
+        filtreli = hafiza["leadlar"].copy()
+        if sektor_filtre != "Tümü":
+            filtreli = [l for l in filtreli if l.get("sektor") == sektor_filtre]
+        if durum_filtre != "Tümü":
+            filtreli = [l for l in filtreli if l.get("durum") == durum_filtre]
+        
+        if sirala == "Puan (Yüksek)":
+            filtreli.sort(key=lambda x: lead_puani(x), reverse=True)
+        elif sirala == "Yeni → Eski":
+            filtreli.reverse()
+        
+        st.caption(f"Toplam {len(filtreli)} lead gösteriliyor.")
+        
+        for lead in filtreli:
+            puan = lead_puani(lead)
+            renk = "🟢" if puan >= 70 else "🟡" if puan >= 50 else "🔴"
             
-            st.markdown("---")
-            
-            # 4 kriter puanı
-            st.markdown("**📊 Kriter Puanları:**")
-            k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Talep", f"{v['talep']:.0f}/100")
-            k2.metric("Ödeme", f"{v['odeme']:.0f}/100")
-            k3.metric("Aciliyet", f"{v['aciliyet']:.0f}/100")
-            k4.metric("Rekabet", f"{v['rekabet']:.0f}/100")
-            
-            st.markdown("---")
-            
-            # İHTİYAÇLAR
-            st.markdown("### 🎯 Ne İstiyor? (İhtiyaçlar)")
-            for ihtiyac in v["ihtiyaclar"]:
-                st.markdown(f"- {ihtiyac}")
-            
-            # BÜTÇE
-            st.markdown("### 💰 Ne Kadara? (Bütçe)")
-            st.markdown(f"**{v['butce_min']} - {v['butce_max']} TL/ay** arası ödemeye hazır.")
-            st.caption(f"Yıllık: {v['butce_min']*12:,} - {v['butce_max']*12:,} TL")
-            
-            # PROBLEM
-            st.markdown("### ❗ Neden İstiyor? (Problem)")
-            st.info(v["problem"])
-            
-            # ŞİKAYET
-            st.markdown("### 😤 Neyden Şikayet Ediyor? (Mevcut Çözümün Eksikliği)")
-            st.warning(v["sikayet"])
-            
-            # MEVCUT ÇÖZÜM
-            st.markdown("### 🔧 Şu An Ne Kullanıyor?")
-            st.markdown(f"**{v['mevcut_cozum']}**")
-            
-            # REDDIT SİNYAL
-            rd = v.get("reddit_sinyal", {})
-            if rd.get("durum") == "canli":
-                st.markdown("### 📡 Reddit Canlı Sinyal")
-                r1, r2, r3 = st.columns(3)
-                r1.metric("Post (son)", rd.get("post_sayisi", 0))
-                r2.metric("Yorum", rd.get("yorum_sayisi", 0))
-                r3.metric("Toplam Skor", rd.get("toplam_skor", 0))
+            with st.expander(f"{renk} {lead['isim']} — {lead.get('sektor', '-')} (Puan: {puan})"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"**Firma:** {lead.get('firma', '-') or '-'}")
+                    st.markdown(f"**Telefon:** {lead.get('telefon', '-') or '-'}")
+                    st.markdown(f"**E-posta:** {lead.get('email', '-') or '-'}")
+                    st.markdown(f"**LinkedIn:** {lead.get('linkedin', '-') or '-'}")
+                with col2:
+                    st.markdown(f"**Şehir:** {lead.get('sehir', '-') or '-'}")
+                    st.markdown(f"**Çalışan:** {lead.get('calisan_sayisi', 0)}")
+                    st.markdown(f"**Bütçe:** {lead.get('butce', 0)} TL/ay")
+                    st.markdown(f"**Durum:** `{lead.get('durum', 'yeni')}`")
                 
-                basliklar = rd.get("ornek_basliklar", [])
-                if basliklar:
-                    st.markdown("**Örnek Başlıklar:**")
-                    for b in basliklar:
-                        st.caption(f"• {b}")
+                if lead.get("notlar"):
+                    st.markdown(f"**Notlar:** {lead['notlar']}")
+                
+                st.caption(f"Eklendi: {lead.get('eklenme_tarihi', '-')}")
+                
+                st.markdown("---")
+                
+                # Durum güncelle
+                col_d1, col_d2 = st.columns([3, 1])
+                with col_d1:
+                    yeni_durum = st.selectbox(
+                        "Durumu Güncelle",
+                        ["yeni", "mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor", "müşteri"],
+                        index=["yeni", "mesaj_gonderildi", "yanit_verdi", "gorusme", "ilgilenmiyor", "müşteri"].index(lead.get("durum", "yeni")),
+                        key=f"durum_{lead['id']}"
+                    )
+                with col_d2:
+                    st.write("")
+                    st.write("")
+                    if st.button("💾 Kaydet", key=f"kaydet_{lead['id']}"):
+                        for i, l in enumerate(hafiza["leadlar"]):
+                            if l["id"] == lead["id"]:
+                                hafiza["leadlar"][i]["durum"] = yeni_durum
+                                break
+                        leadlari_kaydet(hafiza)
+                        st.success("Güncellendi!")
+                        st.rerun()
+                
+                # Sil
+                if st.button(f"🗑️ Sil", key=f"sil_{lead['id']}"):
+                    hafiza["leadlar"] = [l for l in hafiza["leadlar"] if l["id"] != lead["id"]]
+                    leadlari_kaydet(hafiza)
+                    st.success("Silindi!")
+                    st.rerun()
+
+# =====================================================================
+# 4. MESAJ ÜRET
+# =====================================================================
+elif menu == "✉️ Mesaj Üret":
+    st.title("✉️ Kişiselleştirilmiş Mesaj Üret")
+    st.caption("Lead seç, kanal seç, mesajı kopyala, gönder.")
+    st.markdown("---")
+    
+    if not hafiza["leadlar"]:
+        st.warning("Önce lead ekleyin.")
+    else:
+        lead_secenekleri = {f"{l['isim']} ({l.get('sektor', '-')})": l for l in hafiza["leadlar"]}
+        secili = st.selectbox("Lead Seç", list(lead_secenekleri.keys()))
+        lead = lead_secenekleri[secili]
+        
+        kanal = st.radio("Kanal", ["linkedin", "email"], horizontal=True)
+        
+        sektor = lead.get("sektor", "")
+        
+        if sektor in MESAJ_SABLONLARI:
+            mesaj = mesaj_uret(sektor, lead, kanal)
             
-            # TREND
-            st.markdown(f"### 📈 Trend: **{v.get('trend', 'bilinmiyor').upper()}**")
+            st.markdown("### 📝 Üretilen Mesaj")
+            st.text_area("Mesajı kopyalayın:", mesaj, height=300, key="mesaj_uret")
             
             st.markdown("---")
+            st.info(f"""
+            **Nasıl Göndereceksiniz?**
             
-            # POTANSİYEL GELİR
-            ort_butce = (v["butce_min"] + v["butce_max"]) / 2
-            potansiyel = v["isletme"] * ort_butce * 0.001
-            st.success(f"💡 **Potansiyel Aylık Gelir:** {potansiyel:,.0f} TL (toplam pazar × %0.1)")
-else:
-    st.info("Şu an 4 kriteri de geçen sektör yok. Aşağıdaki tabloya bakın.")
-
-st.markdown("---")
-
-# =====================================================================
-# TÜM SEKTÖRLER TABLOSU
-# =====================================================================
-st.subheader("📋 Tüm Sektörler Sıralaması")
-
-df_veri = []
-for i, v in enumerate(veriler, 1):
-    df_veri.append({
-        "Sıra": i,
-        "Sektör": v["isim"],
-        "Kategori": v["kategori"],
-        "Fırsat": v["toplam"],
-        "Talep": v["talep"],
-        "Ödeme": v["odeme"],
-        "Aciliyet": v["aciliyet"],
-        "Rekabet": v["rekabet"],
-        "Bütçe (TL)": f"{v['butce_min']}-{v['butce_max']}",
-        "İşletme": v["isletme"],
-        "Yazılım": v["yazilim"],
-        "Trend": v.get("trend", "-"),
-        "Durum": "✅" if v["hazir"] else "—",
-    })
-
-df = pd.DataFrame(df_veri)
-
-col_f1, col_f2 = st.columns(2)
-with col_f1:
-    sadece_hazir = st.checkbox("Sadece ödemeye hazır olanlar")
-with col_f2:
-    min_puan = st.slider("Minimum puan", 0, 100, 0, 5)
-
-if sadece_hazir:
-    df_goster = df[df["Durum"] == "✅"]
-else:
-    df_goster = df[df["Fırsat"] >= min_puan]
-
-st.dataframe(df_goster, use_container_width=True, hide_index=True)
-st.caption(f"Toplam {len(df_goster)} sektör gösteriliyor.")
-
-st.markdown("---")
+            1. Yukarıdaki mesajı **tamamen seçin ve kopyalayın**
+            2. LinkedIn'de {lead['isim']} profilini açın
+            3. **"Mesaj"** butonuna tıklayın
+            4. Kopyaladığınız mesajı **yapıştırın ve gönderin**
+            5. Geri gelin, durumu **"mesaj_gonderildi"** olarak güncelleyin
+            
+            ⚠️ Aynı anda 20+ kişiye mesaj atmayın. LinkedIn hesabınız kısıtlanır.
+            Günde **10-15 mesaj** ideal.
+            """)
+            
+            # Mesajı kaydet
+            if st.button("✅ Bu Mesajı Gönderdim (Kaydet)"):
+                hafiza["mesajlar"].append({
+                    "lead_id": lead["id"],
+                    "isim": lead["isim"],
+                    "sektor": sektor,
+                    "kanal": kanal,
+                    "mesaj": mesaj,
+                    "tarih": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                })
+                # Durumu güncelle
+                for i, l in enumerate(hafiza["leadlar"]):
+                    if l["id"] == lead["id"]:
+                        hafiza["leadlar"][i]["durum"] = "mesaj_gonderildi"
+                        break
+                leadlari_kaydet(hafiza)
+                mesajlari_kaydet(hafiza)
+                st.success(f"✅ {lead['isim']} için mesaj kaydedildi.")
+                st.rerun()
+        else:
+            st.warning(f"{sektor} için şablon bulunamadı.")
 
 # =====================================================================
-# KATEGORİ ÖZETİ
+# 5. İSTATİSTİKLER
 # =====================================================================
-st.subheader("📂 Kategori Bazında Özet")
-kat_ozet = kategori_ozeti(veriler)
-if kat_ozet:
-    df_kat = pd.DataFrame(kat_ozet)
-    df_kat.columns = ["Kategori", "Ortalama Puan", "Sektör Sayısı", "Toplam İşletme"]
-    st.dataframe(df_kat, use_container_width=True, hide_index=True)
+elif menu == "📈 İstatistikler":
+    st.title("📈 Detaylı İstatistikler")
+    st.markdown("---")
+    
+    if not hafiza["leadlar"]:
+        st.info("Henüz veri yok.")
+    else:
+        sektor_ist = sektor_istatistik(hafiza)
+        
+        st.subheader("🎯 Sektör Bazında Performans")
+        
+        for sektor, v in sektor_ist.items():
+            with st.expander(f"**{sektor}** — {v['toplam']} lead, {v['yanit_veren']} yanıt ({v['yanit_orani']}%)"):
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Toplam Lead", v["toplam"])
+                c2.metric("Mesaj Gönderilen", v["mesaj_gonderilen"])
+                c3.metric("Yanıt Veren", v["yanit_veren"])
+                c4.metric("Görüşme", v["gorusme"])
+                
+                if v["mesaj_gonderilen"] > 0:
+                    yanit_bar = v["yanit_veren"] / v["mesaj_gonderilen"]
+                    st.progress(min(1.0, yanit_bar), text=f"Yanıt oranı: {v['yanit_orani']}%")
+        
+        st.markdown("---")
+        st.subheader("📊 Grafik")
+        
+        df_grafik = pd.DataFrame([
+            {"Sektör": sektor, "Yanıt Oranı": v["yanit_orani"]}
+            for sektor, v in sektor_ist.items()
+        ])
+        st.bar_chart(df_grafik.set_index("Sektör"))
 
-st.markdown("---")
-
 # =====================================================================
-# BİLGİ
+# 6. CSV İÇE / DIŞA
 # =====================================================================
-with st.expander("❓ Sistem Nasıl Çalışır?"):
-    st.markdown(
-        "**Bu sistem 30 sektörü 4 kriterde puanlar:**\n\n"
-        "- **Talep (%35):** Google Trends + Reddit canlı sinyali\n"
-        "- **Ödeme (%30):** İşletme sayısı × Aylık bütçe\n"
-        "- **Aciliyet (%20):** Şikayet sayısı (sektör bazlı)\n"
-        "- **Rekabet (%15):** Mevcut yazılım sayısı (az = iyi)\n\n"
-        "**Her sektör için gösterilen bilgiler:**\n"
-        "- 🎯 Ne istiyor? (İhtiyaçlar)\n"
-        "- 💰 Ne kadara? (Bütçe aralığı)\n"
-        "- ❗ Neden istiyor? (Problem)\n"
-        "- 😤 Neyden şikayet ediyor? (Eksiklik)\n"
-        "- 📡 Reddit'ten canlı sinyal\n\n"
-        "**Ödemeye Hazır Şartları:**\n"
-        "- Toplam ≥ 60, Ödeme ≥ 50, Aciliyet ≥ 40, Rekabet ≥ 40\n\n"
-        "**Not:** Reddit sinyali gerçek canlı veridir. Google Trends sektör "
-        "büyüklüğüne göre hesaplanır. Şikayet sayıları sektör ortalamalarıdır."
+elif menu == "📁 CSV İçe/Dışa":
+    st.title("📁 CSV İçe / Dışa Aktarma")
+    st.markdown("---")
+    
+    st.subheader("📤 Dışa Aktar")
+    st.caption("Lead listesini CSV olarak indirin. Excel'de açabilirsiniz.")
+    
+    if hafiza["leadlar"]:
+        csv_data = leadlari_csv_olarak_indir(hafiza)
+        if csv_data:
+            st.download_button(
+                "⬇️ Lead Listesini İndir (CSV)",
+                data=csv_data,
+                file_name=f"leadlar_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
             )
+    else:
+        st.info("İndirilecek lead yok.")
+    
+    st.markdown("---")
+    st.subheader("📥 İçe Aktar")
+    st.caption("CSV dosyası yükleyin. Sütun başlıkları: isim, firma, telefon, email, linkedin, sehir, sektor, calisan_sayisi, butce, durum, notlar")
+    
+    yuklenen = st.file_uploader("CSV Dosyası Seç", type=["csv"])
+    
+    if yuklenen:
+        st.success(f"✅ {yuklenen.name} yüklendi.")
+        leadlar_yeni = csv_yukle_isle(yuklenen.read())
+        
+        if leadlar_yeni:
+            st.write(f"**{len(leadlar_yeni)} lead bulundu.**")
+            st.dataframe(pd.DataFrame(leadlar_yeni).head(), use_container_width=True)
+            
+            if st.button("✅ Hepsini Ekle", type="primary"):
+                for l in leadlar_yeni:
+                    l["id"] = len(hafiza["leadlar"]) + 1
+                    l.setdefault("eklenme_tarihi", datetime.now().strftime("%Y-%m-%d %H:%M"))
+                    hafiza["leadlar"].append(l)
+                leadlari_kaydet(hafiza)
+                st.success(f"✅ {len(leadlar_yeni)} lead eklendi.")
+                st.rerun()
+    
+    st.markdown("---")
+    st.subheader("📋 Şablon İndir")
+    st.caption("Boş şablon indirin, Excel'de doldurun, buradan yükleyin.")
+    
+    sablon_df = pd.DataFrame(columns=[
+        "isim", "firma", "telefon", "email", "linkedin",
+        "sehir", "sektor", "calisan_sayisi", "butce", "durum", "notlar"
+    ])
+    sablon_csv = sablon_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    
+    st.download_button(
+        "⬇️ Boş Şablon İndir",
+        data=sablon_csv,
+        file_name="lead_sablonu.csv",
+        mime="text/csv"
+    )
+
+# =====================================================================
+# 7. SEKTÖR BİLGİLERİ
+# =====================================================================
+elif menu == "📝 Sektör Bilgileri":
+    st.title("📝 Hedef Sektör Bilgileri")
+    st.caption("5 sektör — detaylı ihtiyaç, bütçe, problem analizi")
+    st.markdown("---")
+    
+    for sektor_adi, s in SEKTORLER.items():
+        with st.expander(f"🎯 **{sektor_adi}** — Bütçe: {s['butce_min']}-{s['butce_max']} TL/ay"):
+            c1, c2, c3 = st.columns(3)
+            c1.metric("İşletme Sayısı", f"{s['isletme_sayisi']:,}")
+            c2.metric("Bütçe (min-max)", f"{s['butce_min']}-{s['butce_max']} TL")
+            c3.metric("Kategori", s["kategori"])
+            
+            st.markdown("---")
+            st.markdown(f"**🔍 LinkedIn Arama Kelimesi:** `{s['linkedin_arama']}`")
+            st.markdown(f"**🎯 Hedef Kitle:** {s['hedef_kitle']}")
+            
+            st.markdown("**🎯 Ne İstiyor?**")
+            for i in s["ihtiyaclar"]:
+                st.markdown(f"- {i}")
+            
+            st.markdown(f"**❗ Problem:** {s['problem']}")
+            st.markdown(f"**😤 Şikayet:** {s['sikayet']}")
+            st.markdown(f"**🔧 Mevcut Çözüm:** {s['mevcut_cozum']}")
+    
+    st.markdown("---")
+    st.info("""
+    ### 🎯 Nasıl Kullanılır?
+    
+    1. **LinkedIn'de arama yapın:** Yukarıdaki `linkedin_arama` kelimesini kullanın
+    2. **Profilleri inceleyin:** Hedef kitleye uyan kişileri bulun
+    3. **Lead ekleyin:** "➕ Lead Ekle" menüsünden bilgileri girin
+    4. **Mesaj üretin:** "✉️ Mesaj Üret" menüsünden kişiselleştirilmiş mesaj alın
+    5. **LinkedIn'den gönderin:** Kopyala-yapıştır, gönder
+    6. **Durumu güncelleyin:** Yanıt verirse güncelleyin
+    7. **İstatistikleri takip edin:** Hangi sektör daha iyi yanıt veriyor
+    """)
