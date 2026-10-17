@@ -37,18 +37,21 @@ else:
 
     st.title("🏢 Lofty Yatırım Kontrol Paneli")
     
+    # Lofty API Dokümantasyonuna göre bu URL ve endpoint değişebilir
     API_URL = "https://api.lofty.ai/v1/" 
+    ENDPOINT = "properties" # Eğer hata alırsak burayı "portfolio" veya "marketplace" yapacağız
 
     if st.button("Verileri Çek"):
         if not API_KEY:
             st.warning("Lütfen sol menüden (sidebar) API anahtarınızı girin.")
         else:
+            # YETKİLENDİRME BAŞLIĞI x-api-key OLARAK GÜNCELLENDİ
             headers = {
-                "Authorization": f"Bearer {API_KEY}",
+                "x-api-key": API_KEY,
                 "Content-Type": "application/json"
             }
             try:
-                response = requests.get(f"{API_URL}properties", headers=headers)
+                response = requests.get(f"{API_URL}{ENDPOINT}", headers=headers)
                 if response.status_code == 200:
                     st.success("Bağlantı Başarılı!")
                     st.json(response.json())
