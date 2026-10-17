@@ -2,30 +2,32 @@ import streamlit as st
 import requests
 
 # --- GÜVENLİK AYARLARI ---
+# Eğer buradaki isimde veya şifrede bir harf hatası varsa giriş yapamazsın.
 DOGRU_KULLANICI = "Cuma Babacan"
 DOGRU_SIFRE = "784512"
 
-# Sayfa ayarları
 st.set_page_config(page_title="Lofty Panelim", page_icon="🏢")
 
-# Oturum durumunu (session state) başlat
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 
 # --- GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
     st.title("Sisteme Giriş")
-    kullanici_adi = st.text_input("Kullanıcı Adı")
-    sifre = st.text_input("Şifre", type="password")
+    
+    # .strip() fonksiyonu, kullanıcının yanlışlıkla girdiği boşlukları siler
+    kullanici_adi = st.text_input("Kullanıcı Adı").strip()
+    sifre = st.text_input("Şifre", type="password").strip()
     
     if st.button("Giriş Yap"):
+        # Büyük/küçük harf duyarlılığını kaldırmak için .lower() ekleyebiliriz ama şimdilik tam eşleşme kontrolü:
         if kullanici_adi == DOGRU_KULLANICI and sifre == DOGRU_SIFRE:
             st.session_state.giris_yapildi = True
-            st.rerun() # Sayfayı yenile
+            st.rerun()
         else:
-            st.error("Kullanıcı adı veya şifre hatalı!")
+            st.error("Kullanıcı adı veya şifre hatalı! Lütfen kod içindeki DOGRU_KULLANICI ve DOGRU_SIFRE değişkenlerini kontrol edin.")
 
-# --- PANEL EKRANI (Giriş başarılıysa çalışır) ---
+# --- PANEL EKRANI ---
 else:
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
     
@@ -35,9 +37,8 @@ else:
 
     st.title("🏢 Lofty Yatırım Kontrol Paneli")
     
-    # API ANAHTARI (Lofty'den aldığın anahtarı tırnak içine yaz)
     API_KEY = "BURAYA_LOFTY_API_ANAHTARINI_YAZ"
-    API_URL = "https://api.lofty.ai/v1/" # Örnek URL, dokümana göre güncellenmeli
+    API_URL = "https://api.lofty.ai/v1/" 
 
     if st.button("Verileri Çek"):
         if API_KEY == "BURAYA_LOFTY_API_ANAHTARINI_YAZ":
@@ -48,9 +49,7 @@ else:
                 "Content-Type": "application/json"
             }
             try:
-                # Lofty API'sine istek atılıyor
                 response = requests.get(f"{API_URL}properties", headers=headers)
-                
                 if response.status_code == 200:
                     st.success("Bağlantı Başarılı!")
                     st.json(response.json())
