@@ -6,7 +6,7 @@ import pandas as pd
 DOGRU_KULLANICI = "Cuma Babacan"
 DOGRU_SIFRE = "784512"
 
-st.set_page_config(page_title="Lofty Algorand Panelim", page_icon="🌐", layout="wide")
+st.set_page_config(page_title="Lofty Otomatik Panel", page_icon="🌐", layout="wide")
 
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
@@ -24,83 +24,68 @@ if not st.session_state.giris_yapildi:
         else:
             st.error("Kullanıcı adı veya şifre hatalı!")
 
-# --- PANEL EKRANI ---
+# --- OTOMATİK PANEL EKRANI ---
 else:
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
     st.sidebar.markdown("---")
-    
-    # Algorand API ayarları
-    st.sidebar.info("Bu panel Algorand Blokzinciri üzerinden çalışır. API anahtarı gerekmez.")
+    st.sidebar.info("Sistem Algorand Blokzincirine bağlanarak tüm Lofty mülklerini otomatik listeler.")
     
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
         st.rerun()
 
-    st.title("🌐 Lofty Blokzincir Kontrol Paneli (Algorand)")
+    st.title("🌐 Lofty Mülkleri (Otomatik Blokzincir Taraması)")
     
-    st.markdown("""
-    Aşağıya Lofty'deki bir mülkün **Asset ID (Varlık ID)** numarasını girerek, o mülkün blokzincir üzerindeki gerçek verilerini (toplam arz, isim, son işlemler) çekebilirsin.
-    """)
-
-    # Kullanıcıdan Asset ID girmesini iste
-    asset_id = st.text_input("Lofty Mülk Asset ID (Örn: 123456789):", "")
-
-    if st.button("Blokzincirden Veri Çek"):
-        if not asset_id.isdigit():
-            st.warning("Lütfen geçerli bir sayısal Asset ID girin.")
-        else:
+    if st.button("Tüm Mülkleri Getir"):
+        with st.spinner("Algorand ağı taranıyor, Lofty mülkleri aranıyor..."):
             try:
-                # 1. Mülk (Token) Detaylarını Çek
-                asset_url = f"https://mainnet-idx.algonode.cloud/v2/assets/{asset_id}"
-                response = requests.get(asset_url)
+                # Algorand Indexer API - Lofty birim adına (unit-name) sahip varlıkları ara
+                # Limit 1000'e kadar çekebiliriz
+                url = "https://mainnet-idx.algonode.cloud/v2/assets"
+                params = {
+                    "unit-name": "LOFTY", # Lofty tokenlarının kısaltması genellikle budur
+                    "limit": 1000
+                }
+                
+                response = requests.get(url, params=params)
                 
                 if response.status_code == 200:
                     data = response.json()
-                    asset_info = data.get("asset", {})
-                    params = asset_info.get("params", {})
+                    assets = data.get("assets", [])
                     
-                    st.success("Gerçek Blokzincir Verisi Başarıyla Çekildi!")
-                    
-                    # Verileri Göster
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Mülk Adı (Token)", params.get("name", "Bilinmiyor"))
-                    col2.metric("Toplam Hisse (Arz)", params.get("total", 0))
-                    col3.metric("Ondalık (Decimal)", params.get("decimals", 0))
-                    
-                    st.write(f"**Birim Kısaltması (Unit):** {params.get('unit-name', 'Bilinmiyor')}")
-                    st.write(f"**Oluşturan Cüzdan (Lofty):** {params.get('creator', 'Bilinmiyor')}")
-                    
-                    st.markdown("---")
-                    st.markdown("### 📊 Son İşlemler (Blokzincir Kayıtları)")
-                    
-                    # 2. Son İşlemleri Çek
-                    tx_url = f"https://mainnet-idx.algonode.cloud/v2/assets/{asset_id}/transactions?limit=10"
-                    tx_response = requests.get(tx_url)
-                    
-                    if tx_response.status_code == 200:
-                        tx_data = tx_response.json()
-                        transactions = tx_data.get("transactions", [])
-                        
-                        if not transactions:
-                            st.info("Bu mülk için henüz blokzincir üzerinde kayıtlı bir transfer/işlem bulunmuyor.")
-                        else:
-                            tx_list = []
-                            for tx in transactions:
-                                tx_list.append({
-                                    "İşlem ID": tx.get("id")[:10] + "...", # Kısaltılmış ID
-                                    "Zaman": tx.get("round-time", 0), # Unix zaman damgası
-                                    "İşlem Miktarı": tx.get("asset-transfer-transaction", {}).get("amount", 0),
-                                    "Gönderen": tx.get("sender", "")[:10] + "...",
-                                })
-                            df = pd.DataFrame(tx_list)
-                            st.dataframe(df, use_container_width=True)
+                    if not assets:
+                        st.warning("Algorand ağında 'LOFTY' birim adına sahip mülk bulunamadı. (Belki farklı bir arama kriteri gerekebilir).")
                     else:
-                        st.warning("Son işlemler çekilemedi.")
+                        # Verileri tabloya uygun hale getirelim
+                        mulk_listesi = []
+                        for asset in assets:
+                            params = asset.get("params", {})
+                            mülk_adi = params.get("name", "Bilinmeyen Mülk")
+                            
+                            # Sadece Lofty mülklerine benzeyenleri filtrele (Çok fazla çöp veri gelirse diye)
+                            if "lofty" in mülk_adi.lower() or "lofty" in params.get("unit-name", "").lower():
+                                mülk_listesi.append({
+                                    "Asset ID": asset.get("index"),
+                                    "Mülk Adı": mülk_adi,
+                                    "Toplam Arz": params.get("total", 0),
+                                    "Ondalık": params.get("decimals", 0),
+                                    "Kısaltma (Unit)": params.get("unit-name", "")
+                                })
                         
-                elif response.status_code == 404:
-                    st.error("Hata: Bu Asset ID'ye sahip bir varlık Algorand ağında bulunamadı. Lütfen ID'yi kontrol edin.")
+                        if mülk_listesi:
+                            st.success(f"Blokzincirden {len(mülk_listesi)} adet Lofty mülkü başarıyla çekildi!")
+                            
+                            df = pd.DataFrame(mulk_listesi)
+                            # Tabloyu göster
+                            st.dataframe(df, use_container_width=True)
+                        else:
+                            st.warning("Arama kriterlerine uyan Lofty mülkü bulunamadı.")
                 else:
                     st.error(f"Algorand API Hatası: {response.status_code}")
                     
             except Exception as e:
                 st.error(f"Bağlantı Hatası: {e}")
+
+    st.markdown("---")
+    st.markdown("### 📌 Not")
+    st.write("Bu panel, Lofty'nin kendi web sitesinden bağımsız olarak doğrudan **Algorand Blokzincirini** tarar. Gelen veriler gerçek ve anlıktır.")
