@@ -28,7 +28,7 @@ if not st.session_state.giris_yapildi:
 else:
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
     st.sidebar.markdown("---")
-    st.sidebar.info("Sistem Algorand Blokzincirine bağlanarak Lofty'nin oluşturduğu tüm mülkleri otomatik listeler.")
+    st.sidebar.info("Sistem Algorand Blokzincirine bağlanarak isminde 'Lofty' geçen tüm mülkleri listeler.")
     
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
@@ -37,17 +37,14 @@ else:
     st.title("🌐 Lofty Mülkleri (Otomatik Blokzincir Taraması)")
     
     if st.button("Tüm Mülkleri Getir"):
-        with st.spinner("Algorand ağı taranıyor, Lofty mülkleri aranıyor..."):
+        with st.spinner("Algorand ağında 'Lofty' mülkleri aranıyor..."):
             lofty_listesi = [] 
             
             try:
-                # Lofty'nin Algorand ağındaki resmi "Creator" cüzdan adresi
-                LOFTY_CREATOR = "LOFTY6VW6L3Q6L..." # Buraya Lofty'nin gerçek adresi gelecek
-                
-                # Algorand API'sine "Bu cüzdanın oluşturduğu tüm varlıkları getir" diyoruz
+                # Algorand Indexer API - İsminde 'Lofty' geçen varlıkları ara
                 url = "https://mainnet-idx.algonode.cloud/v2/assets"
                 params = {
-                    "creator": LOFTY_CREATOR,
+                    "name": "Lofty", # API'ye doğrudan isim filtresi gönderiyoruz
                     "limit": 1000
                 }
                 
@@ -61,21 +58,23 @@ else:
                         params_data = asset.get("params", {})
                         mülk_adi = str(params_data.get("name", ""))
                         
-                        lofty_listesi.append({
-                            "Asset ID": asset.get("index"),
-                            "Mülk Adı": mülk_adi,
-                            "Toplam Arz": params_data.get("total", 0),
-                            "Ondalık": params_data.get("decimals", 0),
-                        })
+                        # Sadece gerçekten Lofty ile ilgili olanları ayıkla (bazen başka şeyler çıkabilir)
+                        if "lofty" in mülk_adi.lower():
+                            lofty_listesi.append({
+                                "Asset ID": asset.get("index"),
+                                "Mülk Adı": mülk_adi,
+                                "Toplam Arz": params_data.get("total", 0),
+                                "Ondalık": params_data.get("decimals", 0),
+                            })
                     
                     if not lofty_listesi:
-                        st.warning("Algorand ağında yapılan taramada Lofty mülkü bulunamadı. Lütfen daha sonra tekrar deneyin.")
+                        st.warning("Algorand ağında yapılan taramada Lofty mülkü bulunamadı. Algorand isimlendirmesi farklı olabilir.")
                     else:
                         st.success(f"Blokzincirden {len(lofty_listesi)} adet Lofty mülkü başarıyla çekildi!")
                         df = pd.DataFrame(lofty_listesi)
                         st.dataframe(df, use_container_width=True)
                 else:
-                    st.error(f"Algorand API Hatası: {response.status_code}")
+                    st.error(f"Algorand API Hatası: {response.status_code} - {response.text}")
                     
             except Exception as e:
                 st.error(f"Bağlantı Hatası: {e}")
