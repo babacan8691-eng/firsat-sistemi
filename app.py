@@ -38,13 +38,15 @@ else:
     
     if st.button("Tüm Mülkleri Getir"):
         with st.spinner("Algorand ağı taranıyor, Lofty mülkleri aranıyor..."):
+            # Hata almamak için listeyi burada tanımlıyoruz
+            lofty_listesi = [] 
+            
             try:
-                # Algorand Indexer API - Lofty birim adına (unit-name) sahip varlıkları ara
-                # Limit 1000'e kadar çekebiliriz
+                # Algorand Indexer API - Lofty birim adına sahip varlıkları ara
+                # NOT: API bazen filtreleri es geçebilir, bu yüzden geniş bir arama yapıyoruz
                 url = "https://mainnet-idx.algonode.cloud/v2/assets"
                 params = {
-                    "unit-name": "LOFTY", # Lofty tokenlarının kısaltması genellikle budur
-                    "limit": 1000
+                    "limit": 1000 # Son 1000 varlığı çek
                 }
                 
                 response = requests.get(url, params=params)
@@ -53,33 +55,27 @@ else:
                     data = response.json()
                     assets = data.get("assets", [])
                     
-                    if not assets:
-                        st.warning("Algorand ağında 'LOFTY' birim adına sahip mülk bulunamadı. (Belki farklı bir arama kriteri gerekebilir).")
-                    else:
-                        # Verileri tabloya uygun hale getirelim
-                        mulk_listesi = []
-                        for asset in assets:
-                            params = asset.get("params", {})
-                            mülk_adi = params.get("name", "Bilinmeyen Mülk")
-                            
-                            # Sadece Lofty mülklerine benzeyenleri filtrele (Çok fazla çöp veri gelirse diye)
-                            if "lofty" in mülk_adi.lower() or "lofty" in params.get("unit-name", "").lower():
-                                mülk_listesi.append({
-                                    "Asset ID": asset.get("index"),
-                                    "Mülk Adı": mülk_adi,
-                                    "Toplam Arz": params.get("total", 0),
-                                    "Ondalık": params.get("decimals", 0),
-                                    "Kısaltma (Unit)": params.get("unit-name", "")
-                                })
+                    # Çekilen tüm varlıkların içinden isminde veya birim adında 'lofty' geçenleri filtrele
+                    for asset in assets:
+                        params_data = asset.get("params", {})
+                        mülk_adi = str(params_data.get("name", ""))
+                        unit_adi = str(params_data.get("unit-name", ""))
                         
-                        if mülk_listesi:
-                            st.success(f"Blokzincirden {len(mülk_listesi)} adet Lofty mülkü başarıyla çekildi!")
-                            
-                            df = pd.DataFrame(mulk_listesi)
-                            # Tabloyu göster
-                            st.dataframe(df, use_container_width=True)
-                        else:
-                            st.warning("Arama kriterlerine uyan Lofty mülkü bulunamadı.")
+                        if "lofty" in mülk_adi.lower() or "lofty" in unit_adi.lower():
+                            lofty_listesi.append({
+                                "Asset ID": asset.get("index"),
+                                "Mülk Adı": mülk_adi,
+                                "Toplam Arz": params_data.get("total", 0),
+                                "Ondalık": params_data.get("decimals", 0),
+                                "Kısaltma (Unit)": unit_adi
+                            })
+                    
+                    if not lofty_listesi:
+                        st.warning("Algorand ağında yapılan taramada Lofty mülkü bulunamadı. Lütfen daha sonra tekrar deneyin.")
+                    else:
+                        st.success(f"Blokzincirden {len(lofty_listesi)} adet Lofty mülkü başarıyla çekildi!")
+                        df = pd.DataFrame(lofty_listesi)
+                        st.dataframe(df, use_container_width=True)
                 else:
                     st.error(f"Algorand API Hatası: {response.status_code}")
                     
