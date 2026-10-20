@@ -21,14 +21,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GİRİŞ BİLGİLERİ (Sabit) ---
+# --- GİRİŞ BİLGİLERİ ---
 DOGRU_KULLANICI = "Cuma Babacan"
 DOGRU_SIFRE = "784512"
 
-# --- OTURUM DURUMU (Hafıza) ---
+# --- OTURUM DURUMU ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
-
 if "lofty_api_key" not in st.session_state:
     st.session_state.lofty_api_key = ""
 
@@ -47,20 +46,20 @@ if not st.session_state.giris_yapildi:
 
 # --- PANEL EKRANI ---
 else:
-    # --- YAN MENÜ (API AYARLARI) ---
+    # --- YAN MENÜ ---
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔑 Lofty API Ayarı")
     st.sidebar.info("Canlı verileri çekmek için API anahtarınızı girin.")
     
-    # Anahtar daha önce girilmediyse veya değiştirilmek isteniyorsa
-    api_input = st.sidebar.text_input("Lofty API Anahtarı:", type="password", value=st.session_state.lofty_api_key)
+    # Anahtarı strip() ile alıyoruz ki başında/sonunda boşluk kalmasın
+    api_input = st.sidebar.text_input("Lofty API Anahtarı:", type="password", value=st.session_state.lofty_api_key).strip()
     
     if st.sidebar.button("Anahtarı Kaydet"):
         if api_input:
             st.session_state.lofty_api_key = api_input
-            st.sidebar.success("API Anahtarı başarıyla kaydedildi!")
+            st.sidebar.success("API Anahtarı kaydedildi!")
             st.rerun()
         else:
             st.sidebar.error("Lütfen bir anahtar girin.")
@@ -68,7 +67,7 @@ else:
     st.sidebar.markdown("---")
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
-        st.session_state.lofty_api_key = "" # Çıkışta anahtarı temizle
+        st.session_state.lofty_api_key = ""
         st.rerun()
 
     # --- ANA EKRAN ---
@@ -76,7 +75,7 @@ else:
     
     tab1, tab2, tab3 = st.tabs(["🏠 Pazar Yeri (Kart Görünümü)", "📊 İslami Uygunluk Analizi", "🔄 Alım-Satım (Emir Defteri)"])
 
-    # --- VERİ ÇEKME FONKSİYONU (Algorand) ---
+    # --- VERİ ÇEKME (Algorand) ---
     @st.cache_data(ttl=300)
     def mülk_listesini_cek():
         lofty_listesi = []
@@ -100,13 +99,14 @@ else:
             st.error(f"Bağlantı hatası: {e}")
         return pd.DataFrame(lofty_listesi)
 
-    # --- CANLI FİYAT ÇEKME FONKSİYONU (Lofty API) ---
+    # --- CANLI API TEST FONKSİYONU (GraphQL ve REST Denemesi) ---
     @st.cache_data(ttl=60) 
-    def canli_fiyat_cek(asset_id, api_key):
+    def canli_api_test(api_key):
         if not api_key:
             return {"error": "API Anahtarı girilmedi."}
             
-        url = "https://api.lofty.ai/api/v1/properties" 
+        # Lofty genellikle GraphQL kullanır. Test isteği hazırlıyoruz.
+        url = "https://api.lofty.ai/graphql" 
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -114,26 +114,33 @@ else:
             "Accept": "application/json"
         }
         
+        # Basit bir test sorgusu (Eğer API yanıt verirse bağlantı başarılıdır)
+        payload = {
+            "query": "{ __typename }"
+        }
+        
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            # POST isteği atıyoruz (GraphQL için)
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
             
             if response.status_code == 200:
-                return response.json() 
+                return {"status": "success", "data": response.json()}
             elif response.status_code == 403:
-                return {"error": "API Anahtarı Yetkisiz (403). Lütfen anahtarınızı kontrol edin."}
+                return {"error": "403 Yetkisiz: API anahtarınız geçersiz veya süresi dolmuş. Lütfen Lofty'den yeni bir anahtar alın."}
+            elif response.status_code == 401:
+                 return {"error": "401 Yetkisiz: Anahtar formatı hatalı veya eksik."}
             else:
-                return {"error": f"Bilinmeyen Hata: {response.status_code}"}
+                return {"error": f"Sunucu Hatası: {response.status_code} - {response.text}"}
                 
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"Bağlantı Hatası: {str(e)}"}
 
-    # --- TAB 1: PAZAR YERİ (KARTLAR) ---
+    # --- TAB 1: PAZAR YERİ ---
     with tab1:
         st.markdown("### Blokzincirden Çekilen Güncel Mülkler")
         
-        # Eğer anahtar girilmemişse kullanıcıyı uyar
         if not st.session_state.lofty_api_key:
-            st.warning("⚠️ Sol menüden Lofty API anahtarınızı girip 'Kaydet' butonuna basın. Aksi takdirde canlı fiyatlar çekilemez.")
+            st.warning("⚠️ Sol menüden Lofty API anahtarınızı girip 'Kaydet' butonuna basın.")
 
         if st.button("Verileri Yenile"):
             st.cache_data.clear()
@@ -144,6 +151,9 @@ else:
         if df.empty:
             st.warning("Mülkler çekilemedi.")
         else:
+            # Sadece bir kere API testi yapalım (Her kart için ayrı ayrı istek atıp sistemi yormayalım)
+            api_test_sonucu = canli_api_test(st.session_state.lofty_api_key)
+            
             st.success(f"Blokzincirden toplam {len(df)} adet Lofty mülkü çekildi!")
             
             gosterilecek_mulkler = df.head(12)
@@ -154,11 +164,8 @@ else:
                     if i + j < len(gosterilecek_mulkler):
                         mülk = gosterilecek_mulkler.iloc[i + j]
                         with cols[j]:
-                            # API anahtarını session_state'ten alıyoruz
-                            canli_veri = canli_fiyat_cek(mülk['Asset ID'], st.session_state.lofty_api_key)
-                            
-                            # API'den veri gelip gelmediğine göre kart tasarımı
-                            if "error" in canli_veri:
+                            # API durumuna göre renk belirle
+                            if "error" in api_test_sonucu:
                                 fiyat_metni = f"<span style='color: #FF5555;'>API Hatası</span>"
                             else:
                                 fiyat_metni = "<span style='color: #00FF00;'>Bağlantı Başarılı!</span>"
@@ -174,12 +181,16 @@ else:
                                 </div>
                             """, unsafe_allow_html=True)
             
-            with st.expander("API Bağlantı Test Çıktısı (Geliştirici İçin)"):
+            # GELİŞTİRİCİ ÇIKTISI (Hatanın tam sebebini burada göreceğiz)
+            with st.expander("🛠️ Geliştirici API Test Çıktısı (Burayı Açın)", expanded=True):
                 st.write("Lofty API'sinden gelen yanıt:")
-                # İlk mülkün verisini test amaçlı gösteriyoruz
-                st.json(canli_fiyat_cek(df.iloc[0]['Asset ID'], st.session_state.lofty_api_key))
+                if "error" in api_test_sonucu:
+                    st.error(api_test_sonucu["error"])
+                else:
+                    st.success("API Bağlantısı Başarılı! Gelen veri:")
+                    st.json(api_test_sonucu["data"])
 
-    # --- TAB 2: İSLAMİ UYGUNLUK ANALİZİ ---
+    # --- TAB 2 ve TAB 3 (Değişmedi) ---
     with tab2:
         st.markdown("### 🕌 İslami Finans (Helal Yatırım) Açısından Lofty")
         st.info("""
@@ -194,7 +205,6 @@ else:
         tahmini_yillik = yatirim * 0.08
         st.success(f"**${yatirim}** yatırım için tahmini yıllık kira geliri: **${tahmini_yillik:.2f}** (Aylık: **${tahmini_yillik/12:.2f}**)")
 
-    # --- TAB 3: EMİR DEFTERİ (ALICI/SATICI) ---
     with tab3:
         st.markdown("### 🔄 Alıcı ve Satıcı Listesi (Order Book)")
         st.info("Lofty API bağlantısı sağlandığında burada canlı emir defteri görüntülenecektir. Şu an API test aşamasındadır.")
