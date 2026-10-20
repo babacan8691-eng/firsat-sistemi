@@ -1,8 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
-import re
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Lofty Yatırım Paneli", page_icon="🏢", layout="wide")
@@ -23,7 +21,6 @@ st.markdown("""
     .sinyal-iyi { color: #00FF00; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(0,255,0,0.1); }
     .sinyal-orta { color: #FFD700; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(255,215,0,0.1); }
     .sinyal-kotu { color: #FF5555; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(255,85,85,0.1); }
-    .fiyat-kutu { color: #00FFFF; font-size: 18px; font-weight: bold; margin-top: 10px; border: 1px dashed #00FFFF; padding: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -93,39 +90,6 @@ else:
         else:
             return "🔴 Riskli (Düşük Likidite)", "sinyal-kotu"
 
-    # --- WEB KAZIMA (SCRAPING) FONKSİYONU ---
-    def lofty_web_kazima(mulk_adi):
-        # Lofty site yapısına göre tahmini bir URL (Mülk adını URL formatına çeviriyoruz)
-        # Örnek: "Lofty 917 Pawnee LFTY0001" -> "https://www.lofty.ai/invest/917-pawnee-lfty0001"
-        temiz_isim = mulk_adi.lower().replace("lofty ", "").replace(" ", "-")
-        
-        # Not: Lofty'nin gerçek URL yapısını tam bilmediğimiz için genel bir arama yapıyoruz.
-        url = f"https://www.lofty.ai/invest/{temiz_isim}"
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        
-        try:
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # HTML içinde "$" işareti içeren metinleri arıyoruz (Fiyat tahmini)
-                fiyatlar = []
-                for text in soup.stripped_strings:
-                    if "$" in text and len(text) < 10: # Örn: "$50.00"
-                        fiyatlar.append(text)
-                
-                if fiyatlar:
-                    return f"Web Sitesinden Çekildi: {fiyatlar[0]}"
-                else:
-                    return "Fiyat HTML içinde bulunamadı (Muhtemelen JavaScript ile yükleniyor)."
-            else:
-                return f"Web sitesi erişimi reddetti (Hata: {response.status_code})"
-        except Exception as e:
-            return f"Kazıma hatası: {e}"
-
     # --- DETAY SAYFASI ---
     if st.session_state.secili_mulk is not None:
         mülk = st.session_state.secili_mulk
@@ -138,13 +102,16 @@ else:
             sinyal, renk = yatirim_sinyali(mülk['Toplam Arz'])
             st.markdown(f"**Yatırım Sinyali:** <span class='{renk}'>{sinyal}</span>", unsafe_allow_html=True)
             
-            st.markdown("### 💰 Canlı Fiyat Arama")
-            with st.spinner("Lofty web sitesinden fiyat kazınıyor..."):
-                fiyat_sonucu = lofty_web_kazima(mülk['Mülk Adı'])
-                st.markdown(f"<div class='fiyat-kutu'>{fiyat_sonucu}</div>", unsafe_allow_html=True)
+            st.markdown("### 💰 Fiyat Hesaplama")
+            # Manuel Fiyat Girişi
+            manuel_fiyat = st.number_input("Lofty'den baktığınız anlık hisse fiyatını girin ($):", min_value=1.0, value=50.0, step=1.0)
+            
+            # Kira Getirisi Hesaplama (Yıllık %8 varsayımı ile)
+            tahmini_yillik_getiri = manuel_fiyat * 0.08
+            st.success(f"Girdiğiniz fiyata göre tahmini yıllık hisse başı kira geliri: **${tahmini_yillik_getiri:.2f}**")
 
         with col2:
-            st.warning("⚠️ **Geliştirici Notu:** Lofty, API'sini kilitlediği için (403 Hatası) resmi olmayan yollarla fiyat çekmeye çalışıyoruz. Eğer Lofty sitesi React/JS kullanıyorsa, HTML içinde fiyat görünmeyecektir. Bu durumda gerçek canlı veri için Lofty'nin kendi SDK'sını kullanmamız şarttır.")
+            st.warning("⚠️ **Bilgilendirme:** Lofty API'si ve web sitesi, dışarıdan (Python üzerinden) otomatik veri çekilmesini engellediği için (403/404 Hataları) anlık fiyatlar otomatik alınamamaktadır. Lütfen Lofty uygulamanızdan baktığınız güncel fiyatı sol taraftaki kutuya manuel olarak giriniz.")
             
         st.markdown("---")
         st.subheader("📜 Son Blokzincir İşlemleri (Algorand)")
