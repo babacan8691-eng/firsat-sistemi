@@ -21,13 +21,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GÜVENLİK AYARLARI (Streamlit Secrets) ---
-# Eğer Streamlit Cloud'da secrets tanımlıysa onu kullanır, yoksa yerel test için varsayılanı kullanır.
+# --- GÜVENLİK AYARLARI (Streamlit Secrets veya Varsayılan) ---
 try:
+    # Önce Streamlit Cloud'daki gizli kasaya bakar
     DOGRU_KULLANICI = st.secrets["KULLANICI_ADI"]
     DOGRU_SIFRE = st.secrets["SIFRE"]
-except FileNotFoundError:
-    # Yerel bilgisayarda test ederken bu kısım çalışır. 
+except Exception:
+    # Eğer Cloud'da secret tanımlanmamışsa veya yerelde çalışıyorsa kod çökmesin diye varsayılanı kullanır
     DOGRU_KULLANICI = "Cuma Babacan"
     DOGRU_SIFRE = "784512"
 
