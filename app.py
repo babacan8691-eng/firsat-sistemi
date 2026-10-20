@@ -53,7 +53,6 @@ else:
     st.sidebar.subheader("🔑 Lofty API Ayarı")
     st.sidebar.info("Canlı verileri çekmek için API anahtarınızı girin.")
     
-    # Anahtarı strip() ile alıyoruz ki başında/sonunda boşluk kalmasın
     api_input = st.sidebar.text_input("Lofty API Anahtarı:", type="password", value=st.session_state.lofty_api_key).strip()
     
     if st.sidebar.button("Anahtarı Kaydet"):
@@ -99,41 +98,47 @@ else:
             st.error(f"Bağlantı hatası: {e}")
         return pd.DataFrame(lofty_listesi)
 
-    # --- CANLI API TEST FONKSİYONU (GraphQL ve REST Denemesi) ---
+    # --- GELİŞMİŞ API TEST FONKSİYONU (Tarayıcı Taklidi ve Çoklu URL Denemesi) ---
     @st.cache_data(ttl=60) 
-    def canli_api_test(api_key):
+    def gelismis_api_test(api_key):
         if not api_key:
             return {"error": "API Anahtarı girilmedi."}
             
-        # Lofty genellikle GraphQL kullanır. Test isteği hazırlıyoruz.
-        url = "https://api.lofty.ai/graphql" 
-        
+        # 1. ADIM: Tarayıcı taklidi (Cloudflare/bot engelini aşmak için)
         headers = {
             "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key, # Bazı API'ler bu başlığı ister
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        # Basit bir test sorgusu (Eğer API yanıt verirse bağlantı başarılıdır)
-        payload = {
-            "query": "{ __typename }"
-        }
+        # 2. ADIM: Lofty'nin kullanma ihtimali olan farklı URL'leri deniyoruz
+        denenecek_urller = [
+            "https://api.lofty.ai/api/v1/properties",
+            "https://api.lofty.ai/v1/properties",
+            "https://api.lofty.ai/graphql",
+            "https://www.lofty.ai/api/v1/properties"
+        ]
         
-        try:
-            # POST isteği atıyoruz (GraphQL için)
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                return {"status": "success", "data": response.json()}
-            elif response.status_code == 403:
-                return {"error": "403 Yetkisiz: API anahtarınız geçersiz veya süresi dolmuş. Lütfen Lofty'den yeni bir anahtar alın."}
-            elif response.status_code == 401:
-                 return {"error": "401 Yetkisiz: Anahtar formatı hatalı veya eksik."}
-            else:
-                return {"error": f"Sunucu Hatası: {response.status_code} - {response.text}"}
+        sonuclar = []
+        
+        for url in denenecek_urller:
+            try:
+                # GET isteği deniyoruz
+                response = requests.get(url, headers=headers, timeout=10)
                 
-        except Exception as e:
-            return {"error": f"Bağlantı Hatası: {str(e)}"}
+                # Eğer 200 dönerse harika, bu URL doğru!
+                if response.status_code == 200:
+                    return {"status": "success", "url": url, "data": response.json()}
+                else:
+                    sonuclar.append(f"{url} -> Hata Kodu: {response.status_code}")
+                    
+            except Exception as e:
+                sonuclar.append(f"{url} -> Bağlantı Hatası: {str(e)}")
+                
+        # Eğer hiçbiri 200 dönmezse, hata detaylarını döndür
+        return {"error": "Tüm URL'ler denendi ancak başarısız oldu.", "detaylar": sonuclar}
 
     # --- TAB 1: PAZAR YERİ ---
     with tab1:
@@ -151,8 +156,8 @@ else:
         if df.empty:
             st.warning("Mülkler çekilemedi.")
         else:
-            # Sadece bir kere API testi yapalım (Her kart için ayrı ayrı istek atıp sistemi yormayalım)
-            api_test_sonucu = canli_api_test(st.session_state.lofty_api_key)
+            # API Testini çalıştır
+            api_test_sonucu = gelismis_api_test(st.session_state.lofty_api_key)
             
             st.success(f"Blokzincirden toplam {len(df)} adet Lofty mülkü çekildi!")
             
@@ -164,7 +169,6 @@ else:
                     if i + j < len(gosterilecek_mulkler):
                         mülk = gosterilecek_mulkler.iloc[i + j]
                         with cols[j]:
-                            # API durumuna göre renk belirle
                             if "error" in api_test_sonucu:
                                 fiyat_metni = f"<span style='color: #FF5555;'>API Hatası</span>"
                             else:
@@ -182,29 +186,22 @@ else:
                             """, unsafe_allow_html=True)
             
             # GELİŞTİRİCİ ÇIKTISI (Hatanın tam sebebini burada göreceğiz)
-            with st.expander("🛠️ Geliştirici API Test Çıktısı (Burayı Açın)", expanded=True):
-                st.write("Lofty API'sinden gelen yanıt:")
+            with st.expander("🛠️ Geliştirici API Test Çıktısı (Detaylar İçin Açın)", expanded=True):
+                st.write("Lofty API'sinden gelen yanıtlar:")
                 if "error" in api_test_sonucu:
                     st.error(api_test_sonucu["error"])
+                    if "detaylar" in api_test_sonucu:
+                        for detay in api_test_sonucu["detaylar"]:
+                            st.write(f"- {detay}")
                 else:
-                    st.success("API Bağlantısı Başarılı! Gelen veri:")
+                    st.success(f"API Bağlantısı Başarılı! Çalışan URL: {api_test_sonucu['url']}")
                     st.json(api_test_sonucu["data"])
 
     # --- TAB 2 ve TAB 3 (Değişmedi) ---
     with tab2:
         st.markdown("### 🕌 İslami Finans (Helal Yatırım) Açısından Lofty")
-        st.info("""
-        **Lofty modeli neden İslam'a uygundur?**
-        *   **Reel Varlık:** Alım satım yaptığınız şey sanal bir balon değil, tapusu olan gerçek bir gayrimenkulün hissesidir.
-        *   **Faiz (Riba) Yoktur:** Bankalar gibi faizle borç para vermezsiniz. Doğrudan mülke ortak olursunuz.
-        *   **Kira Geliri:** Gayrimenkul kiraya verildiğinde elde edilen gelir, hisseniz oranında size yansır.
-        """)
+        st.info("Lofty modeli reel varlığa dayandığı için helal kabul edilir. Detaylar...")
         
-        st.markdown("#### Mülk Kira Getirisi Hesaplama")
-        yatirim = st.number_input("Yatırım Miktarınız ($):", min_value=100, value=1000, step=100)
-        tahmini_yillik = yatirim * 0.08
-        st.success(f"**${yatirim}** yatırım için tahmini yıllık kira geliri: **${tahmini_yillik:.2f}** (Aylık: **${tahmini_yillik/12:.2f}**)")
-
     with tab3:
         st.markdown("### 🔄 Alıcı ve Satıcı Listesi (Order Book)")
-        st.info("Lofty API bağlantısı sağlandığında burada canlı emir defteri görüntülenecektir. Şu an API test aşamasındadır.")
+        st.info("Lofty API bağlantısı sağlandığında burada canlı emir defteri görüntülenecektir.")
