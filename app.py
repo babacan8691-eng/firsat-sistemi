@@ -21,17 +21,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GÜVENLİK AYARLARI (Streamlit Secrets veya Varsayılan) ---
+# --- GÜVENLİK AYARLARI ---
 try:
-    # Önce Streamlit Cloud'daki gizli kasaya bakar
     DOGRU_KULLANICI = st.secrets["KULLANICI_ADI"]
     DOGRU_SIFRE = st.secrets["SIFRE"]
 except Exception:
-    # Eğer Cloud'da secret tanımlanmamışsa veya yerelde çalışıyorsa kod çökmesin diye varsayılanı kullanır
     DOGRU_KULLANICI = "Cuma Babacan"
     DOGRU_SIFRE = "784512"
 
-# --- OTURUM DURUMU ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 
@@ -57,17 +54,16 @@ else:
 
     st.title("🏢 Lofty Gayrimenkul Yatırım Paneli")
     
-    # Sekmeler
     tab1, tab2, tab3 = st.tabs(["🏠 Pazar Yeri (Kart Görünümü)", "📊 İslami Uygunluk Analizi", "🔄 Alım-Satım (Emir Defteri)"])
 
-    # --- VERİ ÇEKME FONKSİYONU (Algorand Indexer) ---
-    @st.cache_data(ttl=300) # 5 dakika önbellekle
+    # --- DÜZELTİLMİŞ VERİ ÇEKME FONKSİYONU ---
+    @st.cache_data(ttl=300)
     def verileri_cek():
         lofty_listesi = []
         try:
             url = "https://mainnet-idx.algonode.cloud/v2/assets"
-            params = {"limit": 1000}
-            # Timeout eklendi (Ağ yavaşlarsa sistem donmasın diye)
+            # API'ye doğrudan "isminde lofty geçenleri ara" komutu veriyoruz
+            params = {"name": "lofty", "limit": 1000} 
             response = requests.get(url, params=params, timeout=15)
             
             if response.status_code == 200:
@@ -76,7 +72,7 @@ else:
                     params_data = asset.get("params", {})
                     mülk_adi = str(params_data.get("name", ""))
                     
-                    # "lofty" geçen ve "AI" geçmeyenleri filtrele
+                    # Çift kontrol: gelen veride lofty var mı ve AI geçmiyor mu?
                     if "lofty" in mülk_adi.lower() and "ai" not in mülk_adi.lower():
                         lofty_listesi.append({
                             "Asset ID": asset.get("index"),
@@ -94,15 +90,20 @@ else:
     # --- TAB 1: PAZAR YERİ (KARTLAR) ---
     with tab1:
         st.markdown("### Blokzincirden Çekilen Güncel Mülkler")
+        
+        # Sayfa ilk açıldığında veriyi otomatik çekmesi için butonu kaldırıp doğrudan çağırabiliriz
+        # veya manuel yenilemek için butonu tutabiliriz. Butonu tutuyoruz.
         if st.button("Verileri Yenile"):
             st.cache_data.clear()
+            st.rerun()
             
         df = verileri_cek()
         
         if df.empty:
-            st.warning("Henüz veri çekilmedi veya Algorand ağında Lofty tokenı bulunamadı. Lütfen 'Verileri Yenile' butonuna basın.")
+            st.warning("Algorand ağında 'lofty' isimli token arandı ancak bulunamadı. Lütfen tekrar deneyin.")
         else:
-            # İlk 12 mülkü kart olarak gösterelim
+            st.success(f"Blokzincirden toplam {len(df)} adet Lofty mülkü başarıyla çekildi!")
+            
             gosterilecek_mulkler = df.head(12)
             
             for i in range(0, len(gosterilecek_mulkler), 3):
@@ -140,16 +141,15 @@ else:
         
         st.markdown("#### Mülk Kira Getirisi Hesaplama")
         yatirim = st.number_input("Yatırım Miktarınız ($):", min_value=100, value=1000, step=100)
-        tahmini_yillik = yatirim * 0.08 # Ortalama %8 varsayımı
+        tahmini_yillik = yatirim * 0.08
         st.success(f"**${yatirim}** yatırım için tahmini yıllık kira geliri: **${tahmini_yillik:.2f}** (Aylık: **${tahmini_yillik/12:.2f}**)")
 
-    # --- TAB 3: EMİR DEFTERİ (ALICI/SATICI) ---
+    # --- TAB 3: EMİR DEFTERİ ---
     with tab3:
         st.markdown("### 🔄 Alıcı ve Satıcı Listesi (Order Book)")
         st.warning("""
         **Bilgilendirme:**
-        Blokzincir ağları (Algorand) sadece **geçmişte gerçekleşmiş** işlemleri kaydeder. 
-        "Şu an kim satıyor, kim almak istiyor" gibi anlık emir listeleri (Order Book) Lofty'nin kendi merkezi sunucusunda tutulur. 
-        
-        Şu an Lofty'nin kendi API'si bize kapalı olduğu için (403 Hatası) anlık alıcı/satıcı listesini çekemiyoruz. Ancak SDK entegrasyonu sağlandığında bu sekmede canlı emir defterini görebileceksiniz.
+        Blokzincir ağları sadece geçmişte gerçekleşmiş işlemleri kaydeder. 
+        Anlık emir listeleri (Order Book) Lofty'nin kendi sunucusunda tutulur. 
+        Şu an Lofty'nin API'si bize kapalı olduğu için (403 Hatası) anlık alıcı/satıcı listesini çekemiyoruz. SDK entegrasyonu sağlandığında bu sekmede canlı emir defterini görebileceksiniz.
         """)
