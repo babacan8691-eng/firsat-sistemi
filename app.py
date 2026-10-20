@@ -2,13 +2,10 @@ import streamlit as st
 import requests
 import pandas as pd
 
-# --- GÜVENLİK AYARLARI ---
-DOGRU_KULLANICI = "Cuma Babacan"
-DOGRU_SIFRE = "784512"
-
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Lofty Yatırım Paneli", page_icon="🏢", layout="wide")
 
-# CSS ile tasarımı güzelleştirelim
+# --- CSS İLE TASARIM ---
 st.markdown("""
     <style>
     .mulk-karti {
@@ -24,6 +21,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- GÜVENLİK AYARLARI (Streamlit Secrets) ---
+# Eğer Streamlit Cloud'da secrets tanımlıysa onu kullanır, yoksa yerel test için varsayılanı kullanır.
+try:
+    DOGRU_KULLANICI = st.secrets["KULLANICI_ADI"]
+    DOGRU_SIFRE = st.secrets["SIFRE"]
+except FileNotFoundError:
+    # Yerel bilgisayarda test ederken bu kısım çalışır. 
+    DOGRU_KULLANICI = "Cuma Babacan"
+    DOGRU_SIFRE = "784512"
+
+# --- OTURUM DURUMU ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 
@@ -49,31 +57,38 @@ else:
 
     st.title("🏢 Lofty Gayrimenkul Yatırım Paneli")
     
-    # Sekmeler oluşturalım
+    # Sekmeler
     tab1, tab2, tab3 = st.tabs(["🏠 Pazar Yeri (Kart Görünümü)", "📊 İslami Uygunluk Analizi", "🔄 Alım-Satım (Emir Defteri)"])
 
-    # Veri çekme fonksiyonu
+    # --- VERİ ÇEKME FONKSİYONU (Algorand Indexer) ---
     @st.cache_data(ttl=300) # 5 dakika önbellekle
     def verileri_cek():
         lofty_listesi = []
         try:
             url = "https://mainnet-idx.algonode.cloud/v2/assets"
-            params = {"name": "Lofty", "limit": 1000}
-            response = requests.get(url, params=params)
+            params = {"limit": 1000}
+            # Timeout eklendi (Ağ yavaşlarsa sistem donmasın diye)
+            response = requests.get(url, params=params, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
                 for asset in data.get("assets", []):
                     params_data = asset.get("params", {})
                     mülk_adi = str(params_data.get("name", ""))
-                    if "lofty" in mülk_adi.lower() and "AI" not in mülk_adi: # "Lofty AI" token'ını filtrele
+                    
+                    # "lofty" geçen ve "AI" geçmeyenleri filtrele
+                    if "lofty" in mülk_adi.lower() and "ai" not in mülk_adi.lower():
                         lofty_listesi.append({
                             "Asset ID": asset.get("index"),
                             "Mülk Adı": mülk_adi,
                             "Toplam Arz": params_data.get("total", 0),
                         })
-        except:
-            pass
+            else:
+                st.error(f"Algorand ağına bağlanılamadı. Hata Kodu: {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            st.error(f"Bağlantı hatası oluştu. Lütfen internetinizi kontrol edin. Detay: {e}")
+            
         return pd.DataFrame(lofty_listesi)
 
     # --- TAB 1: PAZAR YERİ (KARTLAR) ---
@@ -85,7 +100,7 @@ else:
         df = verileri_cek()
         
         if df.empty:
-            st.warning("Henüz veri çekilmedi. Lütfen 'Verileri Yenile' butonuna basın.")
+            st.warning("Henüz veri çekilmedi veya Algorand ağında Lofty tokenı bulunamadı. Lütfen 'Verileri Yenile' butonuna basın.")
         else:
             # İlk 12 mülkü kart olarak gösterelim
             gosterilecek_mulkler = df.head(12)
@@ -136,5 +151,5 @@ else:
         Blokzincir ağları (Algorand) sadece **geçmişte gerçekleşmiş** işlemleri kaydeder. 
         "Şu an kim satıyor, kim almak istiyor" gibi anlık emir listeleri (Order Book) Lofty'nin kendi merkezi sunucusunda tutulur. 
         
-        Şu an Lofty'nin API'si bize kapalı olduğu için (403 Hatası) anlık alıcı/satıcı listesini çekemiyoruz. Ancak API erişimi açıldığında bu sekmede canlı emir defterini görebileceksiniz.
+        Şu an Lofty'nin kendi API'si bize kapalı olduğu için (403 Hatası) anlık alıcı/satıcı listesini çekemiyoruz. Ancak SDK entegrasyonu sağlandığında bu sekmede canlı emir defterini görebileceksiniz.
         """)
