@@ -21,19 +21,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- GÜVENLİK AYARLARI (Streamlit Secrets) ---
-try:
-    DOGRU_KULLANICI = st.secrets["KULLANICI_ADI"]
-    DOGRU_SIFRE = st.secrets["SIFRE"]
-    LOFTY_API_KEY = st.secrets["LOFTY_API_KEY"] # API Anahtarımızı çektik
-except Exception:
-    # Eğer Cloud'da secret tanımlanmamışsa (Yerel test için)
-    DOGRU_KULLANICI = "Cuma Babacan"
-    DOGRU_SIFRE = "784512"
-    LOFTY_API_KEY = "BURAYA_TEST_ICIN_ANAHTAR_YAZILABILIR"
+# --- GİRİŞ BİLGİLERİ (Sabit) ---
+DOGRU_KULLANICI = "Cuma Babacan"
+DOGRU_SIFRE = "784512"
 
+# --- OTURUM DURUMU (Hafıza) ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
+
+if "lofty_api_key" not in st.session_state:
+    st.session_state.lofty_api_key = ""
 
 # --- GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
@@ -50,11 +47,31 @@ if not st.session_state.giris_yapildi:
 
 # --- PANEL EKRANI ---
 else:
+    # --- YAN MENÜ (API AYARLARI) ---
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔑 Lofty API Ayarı")
+    st.sidebar.info("Canlı verileri çekmek için API anahtarınızı girin.")
+    
+    # Anahtar daha önce girilmediyse veya değiştirilmek isteniyorsa
+    api_input = st.sidebar.text_input("Lofty API Anahtarı:", type="password", value=st.session_state.lofty_api_key)
+    
+    if st.sidebar.button("Anahtarı Kaydet"):
+        if api_input:
+            st.session_state.lofty_api_key = api_input
+            st.sidebar.success("API Anahtarı başarıyla kaydedildi!")
+            st.rerun()
+        else:
+            st.sidebar.error("Lütfen bir anahtar girin.")
+
+    st.sidebar.markdown("---")
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
+        st.session_state.lofty_api_key = "" # Çıkışta anahtarı temizle
         st.rerun()
 
+    # --- ANA EKRAN ---
     st.title("🏢 Lofty Gayrimenkul Yatırım Paneli")
     
     tab1, tab2, tab3 = st.tabs(["🏠 Pazar Yeri (Kart Görünümü)", "📊 İslami Uygunluk Analizi", "🔄 Alım-Satım (Emir Defteri)"])
@@ -84,29 +101,26 @@ else:
         return pd.DataFrame(lofty_listesi)
 
     # --- CANLI FİYAT ÇEKME FONKSİYONU (Lofty API) ---
-    @st.cache_data(ttl=60) # 1 dakika önbellekle (Canlı veri için)
-    def canli_fiyat_cek(asset_id):
-        # Lofty'nin SDK'sında kullanılan standart GraphQL veya REST endpoint tahmini
+    @st.cache_data(ttl=60) 
+    def canli_fiyat_cek(asset_id, api_key):
+        if not api_key:
+            return {"error": "API Anahtarı girilmedi."}
+            
         url = "https://api.lofty.ai/api/v1/properties" 
         
         headers = {
-            "Authorization": f"Bearer {LOFTY_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
         
         try:
-            # Eğer API direkt REST ise:
             response = requests.get(url, headers=headers, timeout=10)
             
-            # Eğer API GraphQL istiyorsa (Lofty genelde GraphQL kullanır):
-            # payload = {"query": "{ properties { id name price } }"}
-            # response = requests.post("https://api.lofty.ai/graphql", json=payload, headers=headers)
-            
             if response.status_code == 200:
-                return response.json() # Gelen veriyi döndür
+                return response.json() 
             elif response.status_code == 403:
-                return {"error": "API Anahtarı Yetkisiz (403)."}
+                return {"error": "API Anahtarı Yetkisiz (403). Lütfen anahtarınızı kontrol edin."}
             else:
                 return {"error": f"Bilinmeyen Hata: {response.status_code}"}
                 
@@ -116,6 +130,11 @@ else:
     # --- TAB 1: PAZAR YERİ (KARTLAR) ---
     with tab1:
         st.markdown("### Blokzincirden Çekilen Güncel Mülkler")
+        
+        # Eğer anahtar girilmemişse kullanıcıyı uyar
+        if not st.session_state.lofty_api_key:
+            st.warning("⚠️ Sol menüden Lofty API anahtarınızı girip 'Kaydet' butonuna basın. Aksi takdirde canlı fiyatlar çekilemez.")
+
         if st.button("Verileri Yenile"):
             st.cache_data.clear()
             st.rerun()
@@ -135,9 +154,15 @@ else:
                     if i + j < len(gosterilecek_mulkler):
                         mülk = gosterilecek_mulkler.iloc[i + j]
                         with cols[j]:
-                            # Burada mülkün canlı verisini çekmeyi deniyoruz
-                            canli_veri = canli_fiyat_cek(mülk['Asset ID'])
+                            # API anahtarını session_state'ten alıyoruz
+                            canli_veri = canli_fiyat_cek(mülk['Asset ID'], st.session_state.lofty_api_key)
                             
+                            # API'den veri gelip gelmediğine göre kart tasarımı
+                            if "error" in canli_veri:
+                                fiyat_metni = f"<span style='color: #FF5555;'>API Hatası</span>"
+                            else:
+                                fiyat_metni = "<span style='color: #00FF00;'>Bağlantı Başarılı!</span>"
+
                             st.markdown(f"""
                                 <div class="mulk-karti">
                                     <div class="mulk-baslik">{mülk['Mülk Adı']}</div>
@@ -145,13 +170,14 @@ else:
                                     <div class="mulk-detay">Toplam Hisse: {mülk['Toplam Arz']}</div>
                                     <hr style="border-color: #3A3A5A;">
                                     <div class="helal-uygun">✅ Reel Varlık (Helal)</div>
-                                    <div class="mulk-detay" style="color: #FFD700;">Canlı Fiyat: Test Ediliyor...</div>
+                                    <div class="mulk-detay" style="margin-top: 5px;">Durum: {fiyat_metni}</div>
                                 </div>
                             """, unsafe_allow_html=True)
             
             with st.expander("API Bağlantı Test Çıktısı (Geliştirici İçin)"):
                 st.write("Lofty API'sinden gelen yanıt:")
-                st.json(canli_fiyat_cek(df.iloc[0]['Asset ID']))
+                # İlk mülkün verisini test amaçlı gösteriyoruz
+                st.json(canli_fiyat_cek(df.iloc[0]['Asset ID'], st.session_state.lofty_api_key))
 
     # --- TAB 2: İSLAMİ UYGUNLUK ANALİZİ ---
     with tab2:
