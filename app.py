@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import pandas as pd
+from bs4 import BeautifulSoup
+import re
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Lofty Yatırım Paneli", page_icon="🏢", layout="wide")
@@ -21,6 +23,7 @@ st.markdown("""
     .sinyal-iyi { color: #00FF00; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(0,255,0,0.1); }
     .sinyal-orta { color: #FFD700; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(255,215,0,0.1); }
     .sinyal-kotu { color: #FF5555; font-weight: bold; padding: 5px; border-radius: 5px; background-color: rgba(255,85,85,0.1); }
+    .fiyat-kutu { color: #00FFFF; font-size: 18px; font-weight: bold; margin-top: 10px; border: 1px dashed #00FFFF; padding: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -51,7 +54,6 @@ if not st.session_state.giris_yapildi:
 else:
     st.sidebar.success(f"Hoş geldin, {DOGRU_KULLANICI}")
     
-    # Menüye Geri Dönüş Butonu (Detay sayfasındaysa)
     if st.session_state.secili_mulk is not None:
         if st.sidebar.button("⬅️ Panele Geri Dön"):
             st.session_state.secili_mulk = None
@@ -61,18 +63,6 @@ else:
         st.session_state.giris_yapildi = False
         st.rerun()
 
-    # --- ALGO/DOLAR KURUNU ÇEKME (Binance API) ---
-    @st.cache_data(ttl=300)
-    def algo_kuru_cek():
-        try:
-            response = requests.get("https://api.binance.com/api/v3/ticker/price?symbol=ALGOUSDT", timeout=5)
-            if response.status_code == 200:
-                return float(response.json()["price"])
-        except:
-            pass
-        return 0.20 
-
-    # --- VERİ ÇEKME (Mülk Listesi - Algorand) ---
     @st.cache_data(ttl=300)
     def mülk_listesini_cek():
         lofty_listesi = []
@@ -80,7 +70,6 @@ else:
             url = "https://mainnet-idx.algonode.cloud/v2/assets"
             params = {"name": "lofty", "limit": 1000} 
             response = requests.get(url, params=params, timeout=15)
-            
             if response.status_code == 200:
                 data = response.json()
                 for asset in data.get("assets", []):
@@ -96,7 +85,6 @@ else:
             st.error(f"Bağlantı hatası: {e}")
         return pd.DataFrame(lofty_listesi)
 
-    # --- SİNYAL FONKSİYONU ---
     def yatirim_sinyali(arz):
         if arz >= 2500:
             return "🟢 Yatırım İçin Uygun", "sinyal-iyi"
@@ -104,6 +92,39 @@ else:
             return "🟡 Orta Risk", "sinyal-orta"
         else:
             return "🔴 Riskli (Düşük Likidite)", "sinyal-kotu"
+
+    # --- WEB KAZIMA (SCRAPING) FONKSİYONU ---
+    def lofty_web_kazima(mulk_adi):
+        # Lofty site yapısına göre tahmini bir URL (Mülk adını URL formatına çeviriyoruz)
+        # Örnek: "Lofty 917 Pawnee LFTY0001" -> "https://www.lofty.ai/invest/917-pawnee-lfty0001"
+        temiz_isim = mulk_adi.lower().replace("lofty ", "").replace(" ", "-")
+        
+        # Not: Lofty'nin gerçek URL yapısını tam bilmediğimiz için genel bir arama yapıyoruz.
+        url = f"https://www.lofty.ai/invest/{temiz_isim}"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # HTML içinde "$" işareti içeren metinleri arıyoruz (Fiyat tahmini)
+                fiyatlar = []
+                for text in soup.stripped_strings:
+                    if "$" in text and len(text) < 10: # Örn: "$50.00"
+                        fiyatlar.append(text)
+                
+                if fiyatlar:
+                    return f"Web Sitesinden Çekildi: {fiyatlar[0]}"
+                else:
+                    return "Fiyat HTML içinde bulunamadı (Muhtemelen JavaScript ile yükleniyor)."
+            else:
+                return f"Web sitesi erişimi reddetti (Hata: {response.status_code})"
+        except Exception as e:
+            return f"Kazıma hatası: {e}"
 
     # --- DETAY SAYFASI ---
     if st.session_state.secili_mulk is not None:
@@ -117,56 +138,50 @@ else:
             sinyal, renk = yatirim_sinyali(mülk['Toplam Arz'])
             st.markdown(f"**Yatırım Sinyali:** <span class='{renk}'>{sinyal}</span>", unsafe_allow_html=True)
             
+            st.markdown("### 💰 Canlı Fiyat Arama")
+            with st.spinner("Lofty web sitesinden fiyat kazınıyor..."):
+                fiyat_sonucu = lofty_web_kazima(mülk['Mülk Adı'])
+                st.markdown(f"<div class='fiyat-kutu'>{fiyat_sonucu}</div>", unsafe_allow_html=True)
+
         with col2:
-            st.warning("⚠️ **Not:** Gerçek zamanlı fiyat ve kira getirisi verileri, Lofty API'si kapalı olduğu için çekilememektedir. Aşağıdaki veriler doğrudan Algorand blokzincirinden alınmaktadır.")
+            st.warning("⚠️ **Geliştirici Notu:** Lofty, API'sini kilitlediği için (403 Hatası) resmi olmayan yollarla fiyat çekmeye çalışıyoruz. Eğer Lofty sitesi React/JS kullanıyorsa, HTML içinde fiyat görünmeyecektir. Bu durumda gerçek canlı veri için Lofty'nin kendi SDK'sını kullanmamız şarttır.")
             
         st.markdown("---")
         st.subheader("📜 Son Blokzincir İşlemleri (Algorand)")
         try:
-            # Son 10 işlemi çek
-            url = f"https://mainnet-idx.algonode.cloud/v2/assets/{mülk['Asset ID']}/transactions?limit=10"
+            url = f"https://mainnet-idx.algonode.cloud/v2/assets/{mülk['Asset ID']}/transactions?limit=5"
             res = requests.get(url, timeout=10)
             if res.status_code == 200:
                 txs = res.json().get("transactions", [])
                 if txs:
                     for tx in txs:
-                        tx_id = tx.get("id")
-                        zaman = tx.get("round-time")
-                        # Unix zamanını okunabilir formata çevir
                         from datetime import datetime
-                        zaman_str = datetime.fromtimestamp(zaman).strftime('%Y-%m-%d %H:%M:%S') if zaman else "Bilinmiyor"
-                        st.text(f"İşlem ID: {tx_id} | Zaman: {zaman_str}")
+                        zaman_str = datetime.fromtimestamp(tx.get("round-time")).strftime('%Y-%m-%d %H:%M:%S') if tx.get("round-time") else "Bilinmiyor"
+                        st.text(f"İşlem ID: {tx.get('id')} | Zaman: {zaman_str}")
                 else:
                     st.info("Bu mülke ait son işlem bulunamadı.")
-            else:
-                st.error("Blokzincir işlemleri çekilemedi.")
         except Exception as e:
             st.error(f"İşlemler yüklenirken hata: {e}")
 
-    # --- ANA SAYFA (Mülk Listesi) ---
+    # --- ANA SAYFA ---
     else:
         st.title("🏢 Lofty Gayrimenkul Yatırım Paneli")
         
         df = mülk_listesini_cek()
-        algo_usd = algo_kuru_cek()
         
         if not df.empty:
-            # --- ÜST METRİKLER (Dashboard) ---
             st.markdown("### 📊 Sistem Metrikleri")
-            m1, m2, m3, m4 = st.columns(4)
+            m1, m2, m3 = st.columns(3)
             m1.metric("Toplam Mülk Sayısı", f"{len(df)} Adet")
             m2.metric("Sistemdeki Toplam Hisse", f"{df['Toplam Arz'].sum():,}")
             m3.metric("Ortalama Hisse Arzı", f"{int(df['Toplam Arz'].mean())}")
-            m4.metric("Algorand (ALGO) Kuru", f"${algo_usd:.4f}")
             
             st.markdown("---")
             
-            tab1, tab2, tab3 = st.tabs(["🏠 Pazar Yeri (Kartlar)", "📋 Tüm Liste (Tablo)", "📊 İslami Uygunluk"])
+            tab1, tab2 = st.tabs(["🏠 Pazar Yeri (Kartlar)", "📋 Tüm Liste (Tablo)"])
 
             with tab1:
                 st.markdown("### Blokzincirden Çekilen Güncel Mülkler")
-                
-                # Kaç mülk gösterileceğini seçme
                 gosterilecek_adet = st.slider("Kaç mülk gösterilsin?", min_value=3, max_value=100, value=12, step=3)
                 
                 if st.button("Verileri Yenile"):
@@ -194,28 +209,12 @@ else:
                                     </div>
                                 """, unsafe_allow_html=True)
                                 
-                                # Detay Butonu
                                 if st.button(f"İncele", key=f"btn_{mülk['Asset ID']}"):
                                     st.session_state.secili_mulk = mülk
                                     st.rerun()
 
             with tab2:
                 st.markdown("### 📋 Tüm Mülklerin Tablosu")
-                st.info("Aşağıdaki tabloda Algorand ağından çekilen tüm Lofty mülkleri listelenmiştir. Sütun başlıklarına tıklayarak sıralama yapabilirsiniz.")
                 st.dataframe(df, use_container_width=True, height=600)
-
-            with tab3:
-                st.markdown("### 🕌 İslami Finans (Helal Yatırım) Açısından Lofty")
-                st.info("""
-                **Lofty modeli neden İslam'a uygundur?**
-                *   **Reel Varlık:** Alım satım yaptığınız şey sanal bir balon değil, tapusu olan gerçek bir gayrimenkulün hissesidir.
-                *   **Faiz (Riba) Yoktur:** Bankalar gibi faizle borç para vermezsiniz. Doğrudan mülke ortak olursunuz.
-                *   **Kira Geliri:** Gayrimenkul kiraya verildiğinde elde edilen gelir, hisseniz oranında size yansır.
-                """)
-                
-                st.markdown("#### Mülk Kira Getirisi Hesaplama (Tahmini)")
-                yatirim = st.number_input("Yatırım Miktarınız ($):", min_value=100, value=1000, step=100)
-                tahmini_yillik = yatirim * 0.08
-                st.success(f"**${yatirim}** yatırım için tahmini yıllık kira geliri: **${tahmini_yillik:.2f}** (Aylık: **${tahmini_yillik/12:.2f}**)")
         else:
-            st.error("Sistem Algorand ağına bağlanamadı veya mülk bulamadı.")
+            st.error("Sistem Algorand ağına bağlanamadı.")
