@@ -7,24 +7,28 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Pro Kuantum Borsa Terminali", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Quantum Alpha Terminali", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
-# --- KURUMSAL CSS TASARIMI (Karanlık Tema) ---
+# --- KURUMSAL CSS TASARIMI ---
 st.markdown("""
     <style>
-    .stApp { background-color: #0E1117; color: #FAFAFA; }
-    .metric-card {
-        background: linear-gradient(145deg, #1E1E2E, #151520);
-        padding: 15px; border-radius: 10px; border: 1px solid #3A3A5A;
-        text-align: center; box-shadow: 3px 3px 10px rgba(0,0,0,0.5);
+    .stApp { background-color: #0b0f19; color: #e2e8f0; }
+    .alpha-box {
+        background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
+        padding: 20px; border-radius: 15px; border: 1px solid #3b82f6;
+        margin-bottom: 25px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2);
     }
-    .metric-value { color: #00FFAA; font-size: 26px; font-weight: bold; }
-    .metric-label { color: #A0A0C0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;}
-    .signal-buy { background-color: #008000; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
-    .signal-hold { background-color: #FFA500; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
-    .signal-sell { background-color: #FF0000; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
-    .halal-yes { color: #00FF00; font-weight: bold; }
-    .halal-no { color: #FF0000; font-weight: bold; }
+    .metric-card {
+        background: #111827; padding: 15px; border-radius: 10px; 
+        border: 1px solid #374151; text-align: center;
+    }
+    .metric-value { color: #10b981; font-size: 24px; font-weight: 800; }
+    .metric-label { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;}
+    .signal-buy { background-color: #059669; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+    .signal-hold { background-color: #d97706; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+    .signal-sell { background-color: #dc2626; color: white; padding: 6px 12px; border-radius: 6px; font-weight: bold; }
+    .halal-yes { color: #10b981; font-weight: bold; }
+    .halal-no { color: #ef4444; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -32,13 +36,12 @@ st.markdown("""
 DOGRU_KULLANICI = "Cuma Babacan"
 DOGRU_SIFRE = "784512"
 
-# --- OTURUM DURUMU ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 
 # --- GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h2 style='text-align: center;'>🔒 Kuantum Terminale Giriş</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; margin-top: 50px;'>🔒 Quantum Alpha Terminali</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         kullanici_adi = st.text_input("Kullanıcı Adı").strip()
@@ -52,214 +55,205 @@ if not st.session_state.giris_yapildi:
 
 # --- TERMİNAL EKRANI ---
 else:
-    # Yan Menü
-    st.sidebar.markdown(f"### Hoş geldin,\n**{DOGRU_KULLANICI}**")
-    st.sidebar.markdown(f"Son Güncelleme: `{datetime.now().strftime('%H:%M:%S')}`")
-    if st.sidebar.button("🔄 Verileri Yenile"):
+    # 100 Milyar Dolar Üzeri Dev Şirketler (S&P 100 - Yüksek Hacimli)
+    MEGA_CAP_TICKERS = [
+        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "LLY", "AVGO",
+        "JPM", "V", "XOM", "UNH", "MA", "JNJ", "PG", "HD", "COST", "ABBV",
+        "MRK", "CVX", "ADBE", "CRM", "PEP", "AMD", "KO", "WMT", "BAC", "MCD",
+        "TMO", "CSCO", "ACN", "LIN", "ABT", "ORCL", "DHR", "WFC", "TXN", "PM",
+        "INTC", "NEE", "QCOM", "INTU", "IBM", "AMGN", "CAT", "GE", "DIS", "AMAT",
+        "NOW", "UNP", "SPGI", "BA", "HON", "COP", "PFE", "UBER", "LOW", "ELV",
+        "GS", "BLK", "RTX", "T", "MS", "DE", "BKNG", "TJX", "VRTX", "SYK",
+        "MDT", "SCHW", "LMT", "C", "PLD", "MDLZ", "ADI", "REGN", "GILD", "MMC",
+        "CVS", "ZTS", "CB", "SO", "DUK", "BDX", "CI", "MO", "PGR", "ETN",
+        "BSX", "MU", "PANW", "KLAC", "SNPS", "CDNS", "WM", "ITW", "APH", "EQIX"
+    ]
+
+    st.sidebar.markdown(f"### 👤 {DOGRU_KULLANICI}")
+    st.sidebar.markdown(f"🕒 `{datetime.now().strftime('%H:%M:%S')}`")
+    if st.sidebar.button("🔄 Sistemi ve Verileri Yenile", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    
+        
     st.sidebar.markdown("---")
-    st.sidebar.subheader("⚙️ Analiz Ayarları")
-    period = st.sidebar.selectbox("Geçmiş Veri Periyodu", ["1mo", "3mo", "6mo", "1y", "2y", "5y"], index=3)
+    period = st.sidebar.selectbox("Analiz Periyodu", ["1mo", "3mo", "6mo", "1y"], index=3)
     
-    if st.sidebar.button("Çıkış Yap"):
+    if st.sidebar.button("🚪 Çıkış Yap", use_container_width=True):
         st.session_state.giris_yapildi = False
         st.rerun()
-        
-    st.title("⚡ Pro Kuantum Borsa Terminali")
-    st.markdown("Bu sistem; **gece işlemleri (overnight)**, **döngüsel (mean-reversion) hareketler**, **İslami filtreler** ve **kantitatif metrikleri** harmanlar.")
 
-    varsayilan_hisseler = "AAPL, MSFT, TSLA, NVDA, AMZN, GOOGL, JPM, KO"
-    hisse_input = st.text_input("Analiz edilecek hisseleri virgülle ayırarak girin:", varsayilan_hisseler)
-    hisseler = [h.strip().upper() for h in hisse_input.split(",") if h.strip()]
+    st.title("⚡ Quantum Alpha Terminali (Mega-Cap Tarayıcı)")
+    st.markdown("Sistem; **İstatistiksel Olasılık, Döngü (Mean Reversion), Kelly Kriteri ve Z-Skoru** kullanarak piyasa değeri 100 Milyar $ üzerindeki 100 dev hisseyi tarar. Klişe indikatör içermez.")
 
-    @st.cache_data(ttl=60) # Her 60 saniyede bir otomatik güncelle
-    def veri_analiz_et(hisse, period):
+    # --- ANALİZ FONKSİYONU (KANTİTATİF MATEMATİK) ---
+    @st.cache_data(ttl=3600, show_spinner=False) 
+    def kuantum_analiz(ticker_symbol, period):
         try:
-            ticker = yf.Ticker(hisse)
+            ticker = yf.Ticker(ticker_symbol)
             info = ticker.info
             df = ticker.history(period=period)
             
-            if len(df) < 5: return None
+            if len(df) < 20: return None
             
-            # 1. GECE GETİRİSİ (Overnight Gap)
-            df['Onceki_Kapanis'] = df['Close'].shift(1)
-            df['Gece_Getirisi'] = ((df['Open'] / df['Onceki_Kapanis']) - 1) * 100
-            gecerli = df.dropna().copy()
+            # 1. Gece Getirisi (Overnight Gap)
+            df['Prev_Close'] = df['Close'].shift(1)
+            df['Gap'] = ((df['Open'] / df['Prev_Close']) - 1) * 100
+            df = df.dropna()
             
-            if len(gecerli) == 0: return None
+            # 2. İstatistiksel Metrikler
+            mean_gap = df['Gap'].mean()
+            std_gap = df['Gap'].std()
+            win_rate = (df['Gap'] > 0).mean()
             
-            # 2. TEMEL METRİKLER
-            ort_getiri = gecerli['Gece_Getirisi'].mean()
-            std_sapma = gecerli['Gece_Getirisi'].std()
-            pozitif_oran = (gecerli['Gece_Getirisi'] > 0).mean() * 100
+            wins = df[df['Gap'] > 0]['Gap']
+            losses = df[df['Gap'] <= 0]['Gap']
+            avg_win = wins.mean() if len(wins) > 0 else 0
+            avg_loss = abs(losses.mean()) if len(losses) > 0 else 0
             
-            kazananlar = gecerli[gecerli['Gece_Getirisi'] > 0]['Gece_Getirisi']
-            kaybedenler = gecerli[gecerli['Gece_Getirisi'] <= 0]['Gece_Getirisi']
-            ort_kazanc = kazananlar.mean() if len(kazananlar) > 0 else 0
-            ort_kayip = abs(kaybedenler.mean()) if len(kaybedenler) > 0 else 0
+            # 3. Beklenen Getiri (Expectancy) ve Kelly Kriteri
+            expectancy = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
+            win_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+            kelly = win_rate - ((1 - win_rate) / win_loss_ratio) if win_loss_ratio > 0 else 0
             
-            # Beklenen Getiri (Expectancy)
-            kazanma_orani = pozitif_oran / 100
-            beklenen_getiri = (kazanma_orani * ort_kazanc) - ((1 - kazanma_orani) * ort_kayip)
+            # 4. Döngü Analizi (Mean Reversion): Dün düştüyse bugün yükselme olasılığı
+            prev_down = df['Gap'].shift(1) < 0
+            curr_up = df['Gap'] > 0
+            cycle_prob = curr_up[prev_down].mean() * 100 if prev_down.sum() > 0 else 0
             
-            # 3. DÖNGÜ ANALİZİ (MEAN REVERSION)
-            # "Dün düştüyse bugün yükselir" mantığı
-            dun_dusenler = gecerli['Gece_Getirisi'].shift(1) < 0
-            bugun_yukselenler = gecerli['Gece_Getirisi'] > 0
-            dongu_skoru = (bugun_yukselenler[dun_dusenler]).mean() * 100 if dun_dusenler.sum() > 0 else 0
-            
-            # 4. İSLAMİ UYGUNLUK (Sektör Filtresi)
+            # 5. Z-Skoru (Aşırı Sapma): Son günün gap'i ortalamadan ne kadar saptı?
+            last_gap = df['Gap'].iloc[-1]
+            z_score = (last_gap - mean_gap) / std_gap if std_gap > 0 else 0
+
+            # 6. İslami Filtre (Sektör)
             sektor = str(info.get('sector', '')).lower()
-            industry = str(info.get('industry', '')).lower()
-            haram_sektorler = ['financial services', 'banks', 'alcohol', 'tobacco', 'gambling', 'defense', 'aerospace']
+            haram = ['financial services', 'banks', 'alcohol', 'tobacco', 'gambling', 'defense', 'aerospace']
+            is_halal = not (any(h in sektor for h in haram))
             
-            is_halal = True
-            if any(h in sektor for h in haram_sektorler) or any(h in industry for h in haram_sektorler):
-                is_halal = False
-            
-            # 5. SİNYAL ÜRETİMİ
-            # Beklenen getiri > 0.10 VE Döngü Skoru > 50 VE Volatilite < 2.5 (Aşırı riskli değilse)
-            if beklenen_getiri > 0.1 and dongu_skoru > 50 and std_sapma < 2.5 and is_halal:
-                sinyal = "🟢 GÜÇLÜ AL"
-                sinyal_renk = "signal-buy"
-            elif beklenen_getiri > 0 and is_halal:
-                sinyal = "🟡 BEKLE / İZLE"
-                sinyal_renk = "signal-hold"
+            # 7. Sinyal Üretimi
+            if expectancy > 0.05 and cycle_prob > 55 and is_halal:
+                signal, s_color = "🟢 GÜÇLÜ AL", "signal-buy"
+            elif expectancy > 0 and is_halal:
+                signal, s_color = "🟡 İZLE", "signal-hold"
             else:
-                sinyal = "🔴 RİSKLİ / ALMA"
-                sinyal_renk = "signal-sell"
+                signal, s_color = "🔴 RİSKLİ", "signal-sell"
 
             return {
-                "Hisse": hisse,
-                "Şirket": info.get('shortName', hisse)[:15],
-                "Beklenen Getiri (%)": round(beklenen_getiri, 4),
-                "Pozitif Açılış (%)": round(pozitif_oran, 2),
-                "Döngü Skoru (%)": round(dongu_skoru, 2),
-                "Volatilite": round(std_sapma, 3),
-                "Sinyal": sinyal,
-                "Sinyal_Renk": sinyal_renk,
+                "Hisse": ticker_symbol,
+                "Şirket": info.get('shortName', ticker_symbol)[:15],
+                "Beklenen Getiri (%)": round(expectancy, 3),
+                "Döngü Olasılığı (%)": round(cycle_prob, 1),
+                "Kelly Oranı": round(kelly, 3),
+                "Son Gece Gap (%)": round(last_gap, 2),
+                "Z-Skoru": round(z_score, 2),
+                "Sinyal": signal,
+                "Sinyal_Renk": s_color,
                 "Helal": is_halal,
                 "Sektor": sektor.title(),
-                "Veri": gecerli
+                "Grafik_Verisi": df
             }
-        except Exception as e:
+        except:
             return None
 
-    if st.button("🚀 Piyasayı Tara ve Analiz Et", use_container_width=True):
-        if not hisseler:
-            st.warning("Lütfen hisse kodu girin.")
+    # --- TARAMA BAŞLATICI ---
+    if st.button("🚀 100 Dev Hissede Kuantum Taraması Başlat", use_container_width=True):
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        results = []
+        
+        # Aynı anda çok istek atmamak için yavaş yavaş tarıyoruz
+        for i, ticker in enumerate(MEGA_CAP_TICKERS):
+            status_text.text(f"Taranıyor: {ticker} ({i+1}/{len(MEGA_CAP_TICKERS)})")
+            res = kuantum_analiz(ticker, period)
+            if res:
+                results.append(res)
+            progress_bar.progress((i + 1) / len(MEGA_CAP_TICKERS))
+            
+        status_text.text("Tarama Tamamlandı!")
+        progress_bar.empty()
+        
+        if results:
+            df_final = pd.DataFrame(results)
+            # En yüksek Beklenen Getiriye göre sırala
+            df_final = df_final.sort_values(by="Beklenen Getiri (%)", ascending=False).reset_index(drop=True)
+            st.session_state['df_results'] = df_final # Hafızaya al
+
+    # --- SONUÇLARI EKRANA BASMA ---
+    if 'df_results' in st.session_state:
+        df_final = st.session_state['df_results']
+        
+        # --- 1. EN ÜSTTEKİ ÖZEL KUTUCUK (TOP PICKS) ---
+        top_picks = df_final[(df_final['Sinyal'].str.contains("GÜÇLÜ")) & (df_final['Helal'] == True)].head(3)
+        
+        if not top_picks.empty:
+            st.markdown("<div class='alpha-box'>", unsafe_allow_html=True)
+            st.markdown("### 🏆 Sistemin En İyi 3 Yatırım Fırsatı (Helal & Yüksek Olasılık)")
+            st.markdown("Bu hisseler, matematiksel modellerimizin (Beklenen Getiri + Döngü + Kelly) en yüksek skor verdiği varlıklardır.")
+            
+            cols = st.columns(3)
+            for idx, (_, row) in enumerate(top_picks.iterrows()):
+                with cols[idx]:
+                    st.markdown(f"""
+                        <div class='metric-card'>
+                            <h2 style='color: #60a5fa; margin: 0;'>{row['Hisse']}</h2>
+                            <p style='color: #9ca3af; margin: 5px 0;'>{row['Şirket']}</p>
+                            <hr style='border-color: #374151;'>
+                            <div class='metric-value'>%{row['Beklenen Getiri (%)']}</div>
+                            <div class='metric-label'>Beklenen Getiri</div>
+                            <p style='color: #10b981; margin-top: 5px;'>Döngü: %{row['Döngü Olasılığı (%)']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
-            sonuclar = []
-            all_data = []
-            
-            with st.spinner("Gerçek piyasa verileri çekiliyor, algoritmalar çalıştırılıyor..."):
-                for hisse in hisseler:
-                    res = veri_analiz_et(hisse, period)
-                    if res:
-                        df_veri = res.pop("Veri")
-                        df_veri['Hisse'] = hisse
-                        all_data.append(df_veri)
-                        sonuclar.append(res)
-            
-            if sonuclar:
-                df_final = pd.DataFrame(sonuclar)
-                df_final = df_final.sort_values(by="Beklenen Getiri (%)", ascending=False).reset_index(drop=True)
-                df_all_data = pd.concat(all_data)
-                
-                st.success(f"Tarama Tamamlandı! {len(df_final)} hisse analiz edildi.")
-                
-                # --- SEKMELER ---
-                tab1, tab2, tab3, tab4 = st.tabs(["📊 Piyasa Tarayıcı", "🔍 Detaylı Hisse Kartı", "📈 Döngü ve Dağılım", "ℹ️ Sistem Nasıl Çalışır?"])
-                
-                # --- TAB 1: TARAYICI TABLOSU ---
-                with tab1:
-                    st.markdown("### 📊 Kantitatif Piyasa Tarayıcı")
-                    # Tabloyu görsel olarak zenginleştirme
-                    st.dataframe(
-                        df_final[["Hisse", "Şirket", "Beklenen Getiri (%)", "Döngü Skoru (%)", "Pozitif Açılış (%)", "Volatilite", "Sinyal"]],
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "Hisse": st.column_config.TextColumn("Hisse", width="small"),
-                            "Beklenen Getiri (%)": st.column_config.NumberColumn("Beklenen Getiri", format="%.3f %%"),
-                            "Döngü Skoru (%)": st.column_config.ProgressColumn("Döngü Skoru", min_value=0, max_value=100, format="%.1f %%"),
-                        }
-                    )
-                    
-                # --- TAB 2: DETAYLI KART ---
-                with tab2:
-                    secilen_hisse = st.selectbox("Detaylarını görmek istediğiniz hisseyi seçin:", df_final['Hisse'].tolist())
-                    secili_veri = df_final[df_final['Hisse'] == secilen_hisse].iloc[0]
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Beklenen Getiri", f"% {secili_veri['Beklenen Getiri (%)']}")
-                    col2.metric("Döngü (Bounce) Skoru", f"% {secili_veri['Döngü Skoru (%)']}")
-                    col3.metric("Pozitif Açılış Oranı", f"% {secili_veri['Pozitif Açılış (%)']}")
-                    col4.metric("Volatilite (Risk)", secili_veri['Volatilite'])
-                    
-                    st.markdown("---")
-                    c_left, c_right = st.columns(2)
-                    
-                    with c_left:
-                        st.subheader("🏢 Şirket ve İslami Filtre")
-                        st.write(f"**Sektör:** {secili_veri['Sektor']}")
-                        if secili_veri['Helal']:
-                            st.markdown("Durum: <span class='halal-yes'>✅ İslami Açıdan Uygun (Sektör Filtresi)</span>", unsafe_allow_html=True)
-                        else:
-                            st.markdown("Durum: <span class='halal-no'>❌ İslami Açıdan Şüpheli (Faiz, Alkol, Kumar vb.)</span>", unsafe_allow_html=True)
-                            st.caption("Not: Bu otomatik bir sektör filtresidir. Kesin hüküm için finansal tablolara (borç/faiz oranı) bakılmalıdır.")
-                            
-                    with c_right:
-                        st.subheader("⚖️ Yatırım Kararı")
-                        st.markdown(f"<h3><span class='{secili_veri['Sinyal_Renk']}'>{secili_veri['Sinyal']}</span></h3>", unsafe_allow_html=True)
-                        if "GÜÇLÜ" in secili_veri['Sinyal']:
-                            st.write("Sistem, bu hissede gece işlemlerinin (akşam al, sabah sat) uzun vadede kârlı olduğunu ve düşüş sonrası toparlanma (döngü) ihtimalinin yüksek olduğunu öngörüyor.")
-                        elif "BEKLE" in secili_veri['Sinyal']:
-                            st.write("Getiri potansiyeli var ancak çok güçlü değil. Daha iyi fırsatlar beklenebilir.")
-                        else:
-                            st.write("Sistem bu hissede gece işlemi yapılmasını önermiyor. Getiri beklentisi negatif veya risk çok yüksek.")
+            st.warning("Şu anki piyasa koşullarında 'Güçlü Al' sinyali veren ve İslami kurallara tam uygun bir hisse bulunamadı.")
 
-                # --- TAB 3: GRAFİKLER ---
-                with tab3:
-                    secilen_grafik_hisse = st.selectbox("Grafiği çizilecek hisse:", df_final['Hisse'].tolist(), key="grafik_hisse")
-                    hisse_gecmis = df_all_data[df_all_data['Hisse'] == secilen_grafik_hisse]
-                    
-                    # 1. Kümülatif Getiri Grafiği (1000$ Simülasyonu)
-                    hisse_gecmis = hisse_gecmis.copy()
-                    hisse_gecmis['Sermaye'] = 1000 * (1 + hisse_gecmis['Gece_Getirisi']/100).cumprod()
-                    
-                    fig_line = px.line(hisse_gecmis, y='Sermaye', title=f"{secilen_grafik_hisse} - 1000$ Sermaye Simülasyonu (Sadece Gece İşlemleri)",
-                                       labels={'Sermaye': 'Bakiye ($)', 'Date': 'Tarih'})
-                    fig_line.update_traces(line_color='#00FFAA', line_width=3)
-                    fig_line.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_line, use_container_width=True)
-                    
-                    # 2. Dağılım (Histogram)
-                    fig_hist = px.histogram(hisse_gecmis, x='Gece_Getirisi', nbins=50, title=f"{secilen_grafik_hisse} - Gece Getirisi Dağılımı",
-                                            color_discrete_sequence=['#FFA500'])
-                    fig_hist.add_vline(x=0, line_dash="dash", line_color="red")
-                    fig_hist.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_hist, use_container_width=True)
+        # --- 2. TÜM PİYASA TABLOSU ---
+        st.markdown("### 📊 Tüm Taranan Hisseler (Kantitatif Veriler)")
+        st.dataframe(
+            df_final[["Hisse", "Şirket", "Beklenen Getiri (%)", "Döngü Olasılığı (%)", "Kelly Oranı", "Z-Skoru", "Sinyal"]],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Hisse": st.column_config.TextColumn("Hisse", width="small"),
+                "Beklenen Getiri (%)": st.column_config.NumberColumn("Beklenen Getiri", format="%.3f %%"),
+                "Döngü Olasılığı (%)": st.column_config.ProgressColumn("Döngü (Mean Reversion)", min_value=0, max_value=100, format="%.1f %%"),
+                "Kelly Oranı": st.column_config.NumberColumn("Kelly Kriteri", format="%.3f"),
+            }
+        )
+        
+        # --- 3. HİSSE DETAY VE GRAFİK ---
+        st.markdown("---")
+        st.markdown("### 🔍 Derinlemesine İnceleme")
+        secilen = st.selectbox("Detaylarını ve grafiğini görmek istediğiniz hisseyi seçin:", df_final['Hisse'].tolist())
+        secili_veri = df_final[df_final['Hisse'] == secilen].iloc[0]
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Şirket Sektörü", secili_veri['Sektor'])
+        
+        if secili_veri['Helal']:
+            c2.markdown("**İslami Durum:**<br><span class='halal-yes'>✅ Uygun (Sektör Filtresi)</span>", unsafe_allow_html=True)
+        else:
+            c2.markdown("**İslami Durum:**<br><span class='halal-no'>❌ Şüpheli (Faiz/Alkol vb.)</span>", unsafe_allow_html=True)
+            
+        c3.metric("Son Gece Gap", f"%{secili_veri['Son Gece Gap (%)']}")
+        c4.metric("Z-Skoru (Sapma)", secili_veri['Z-Skoru'])
+        
+        # Grafik
+        grafik_df = secili_veri['Grafik_Verisi']
+        # Kümülatif getiri simülasyonu (Sadece geceleri al-sat)
+        grafik_df = grafik_df.copy()
+        grafik_df['Kümülatif Getiri'] = (1 + grafik_df['Gap']/100).cumprod()
+        
+        fig = px.line(grafik_df, y='Kümülatif Getiri', title=f"{secilen} - 1$'lık Yatırımın Sadece Gece İşlemleriyle Büyümesi",
+                      labels={'Kümülatif Getiri': 'Bakiye (Kat Sayısı)', 'Date': 'Tarih'})
+        fig.update_traces(line_color='#3b82f6', line_width=2)
+        fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=400)
+        st.plotly_chart(fig, use_container_width=True)
 
-                # --- TAB 4: YARDIM ---
-                with tab4:
-                    st.markdown("""
-                    ### 🧠 Sistem Mantığı ve Döngü Analizi
-                    
-                    **1. Döngü Skoru (Mean Reversion) Nedir?**
-                    Sizin de belirttiğiniz gibi borsalarda bir "sarkaç" etkisi vardır. Bir gün sert düşen bir hisse, ertesi gün tepki olarak yükselebilir. 
-                    Sistemimiz şu soruyu sorar: *"Bu hisse geçmişte, bir önceki gece düştüğünde, ertesi gece yükselme (veya tam tersi) ihtimali yüzde kaçtı?"*
-                    Döngü skoru %60'ın üzerindeyse, hissenin "yay gibi" geri tepme potansiyeli yüksektir.
-                    
-                    **2. Beklenen Getiri (Expectancy)**
-                    Sadece "kaç kere kazandım" değil, "kazandığımda ne kadar, kaybettiğimde ne kadar kaybediyorum" mantığıdır. 
-                    Formül: `(Kazanma Oranı x Ortalama Kazanç) - (Kaybetme Oranı x Ortalama Kayıp)`
-                    Eğer sonuç **artı** ise, bu strateji matematiksel olarak kârlıdır.
-                    
-                    **3. İslami Uygunluk**
-                    Sistem, Yahoo Finance verilerini kullanarak şirketin ana faaliyet alanını (Sektör) kontrol eder. Faiz (Bankacılık), Alkol, Tütün, Kumar gibi sektörlerdeyse "Şüpheli" olarak işaretler. (Yatırım yapmadan önce güncel helal hisse listelerini kontrol etmeniz tavsiye edilir).
-                    """)
-            else:
-                st.error("Analiz edilecek hisse bulunamadı veya veriler eksik.")
+        # --- 4. MATEMATİKSEL AÇIKLAMALAR ---
+        with st.expander("🧠 Sistemdeki Matematiksel Modeller Ne Anlama Geliyor? (Klişe Değildir)"):
+            st.markdown("""
+            *   **Beklenen Getiri (Expectancy):** `(Kazanma Oranı x Ortalama Kazanç) - (Kaybetme Oranı x Ortalama Kayıp)`. Eğer sonuç sıfırdan büyükse, bu strateji (akşam al, sabah sat) uzun vadede matematiksel olarak kârlıdır.
+            *   **Döngü Olasılığı (Mean Reversion):** Sizin de belirttiğiniz döngü. *"Bir önceki gece düştüyse, bu gece yükselme ihtimali nedir?"* Yüzde 55 ve üzeri, piyasanın o hissede "yay gibi geri tepme" eğiliminde olduğunu gösterir.
+            *   **Kelly Kriteri:** Profesyonel fon yöneticilerinin kullandığı formüldür. *"Bu hisseye portföyümün yüzde kaçını yatırmalıyım?"* sorusunun matematiksel cevabıdır. (Pozitif ve yüksek olması iyidir).
+            *   **Z-Skoru:** Son günün fiyat hareketinin, geçmiş ortalamaya göre ne kadar anormal olduğunu gösterir. `-2`'nin altındaysa "aşırı düşmüş, tepki alımı gelebilir" anlamına gelir.
+            """)
