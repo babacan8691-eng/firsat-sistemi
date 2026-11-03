@@ -68,38 +68,36 @@ if fatura_file is not None:
             4. Eğer hata varsa detaylı açıklaması.
             """
             
+            # google-genai istemcisi (SDK, geçici hatalarda otomatik yeniden dener)
             client = genai.Client(api_key=api_key)
             response = None
+            error_message = ""
             
-            # Birincil Model: gemini-3.8-flash (Otomatik Yeniden Deneme ile)
-            max_retries = 3
-            for attempt in range(max_retries):
+            # Sırayla denenecek modeller (Yoğunluk durumunda hafif modele geçiş)
+            models_to_try = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']
+            
+            for model_name in models_to_try:
                 try:
                     response = client.models.generate_content(
-                        model='gemini-3.8-flash',
+                        model=model_name,
                         contents=prompt
                     )
                     break # Başarılı olursa döngüden çık
                 except Exception as e:
-                    if "503" in str(e) and attempt < max_retries - 1:
-                        time.sleep(2) # 2 saniye bekle ve tekrar dene
+                    error_message = str(e)
+                    # Eğer 503 (Yoğunluk) veya 429 (Hız Limiti) hatasıysa kısa bir süre bekle ve sonraki modeli dene
+                    if "503" in error_message or "429" in error_message:
+                        time.sleep(2) # 2 saniye bekle
                         continue
                     else:
-                        break # Diğer hatalarda veya son denemede döngüden çık
-
-            # Yedek Model: Eğer birincil model başarısız olursa gemini-3.6-flash'e geç
-            if response is None:
-                try:
-                    st.warning("Birincil model şu an yoğun, yedek model deneniyor...")
-                    response = client.models.generate_content(
-                        model='gemini-3.6-flash',
-                        contents=prompt
-                    )
-                except Exception as e:
-                    st.error(f"Yapay Zeka Hatası: Her iki model de yanıt veremedi. Lütfen daha sonra tekrar deneyin. Detay: {e}")
+                        # API anahtarı hatası vb. durumlarda döngüyü kır
+                        break
 
             if response is not None:
+                st.success(f"Analiz '{model_name}' modeli ile tamamlandı.")
                 st.info(response.text)
+            else:
+                st.error(f"Yapay Zeka Hatası: Tüm modeller şu an yoğun veya geçici bir sorun var. Lütfen 1-2 dakika sonra tekrar deneyin. Detay: {error_message}")
 
     elif not api_key:
         st.warning("⚠️ Analizi başlatmak için lütfen yukarıya Gemini API Anahtarınızı girin.")
