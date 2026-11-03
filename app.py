@@ -8,11 +8,10 @@ import re
 import sqlite3
 from datetime import datetime
 
-# --- VERİTABANI KURULUMU (Gerçek Piyasa Şeması) ---
+# --- VERİTABANI KURULUMU ---
 def init_db():
     conn = sqlite3.connect('lojistik_denetim_v2.db')
     c = conn.cursor()
-    # Gelişmiş Fatura Tablosu (VKN, İrsaliye, Plaka, Güven Skoru vb. eklendi)
     c.execute('''CREATE TABLE IF NOT EXISTS faturalar
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   fatura_no TEXT,
@@ -29,7 +28,7 @@ def init_db():
                   onay_durumu TEXT DEFAULT 'Bekliyor',
                   ai_guven_skoru REAL,
                   denetim_izi TEXT,
-                  UNIQUE(fatura_no, tedarikci_vkn))''') # Gerçek mükerrer kontrolü
+                  UNIQUE(fatura_no, tedarikci_vkn))''')
     conn.commit()
     return conn
 
@@ -40,28 +39,24 @@ st.set_page_config(page_title="Lojistik Fatura Denetim Sistemi", page_icon="📄
 st.title("📄 Kurumsal Lojistik Fatura Denetim ve Mutabakat Sistemi")
 st.write("Piyasa standartlarında; lojistik odaklı veri çıkarımı, akıllı mükerrer kontrolü ve tolerans yönetimi içeren denetim aracı.")
 
-# --- SOL MENÜ (KONTROL PANELİ) ---
+# --- SOL MENÜ ---
 with st.sidebar:
     st.header("⚙️ Sistem Ayarları")
-    api_key = st.text_input("🔑 Gemini API Anahtarı:", type="password", help="Google AI Studio üzerinden ücretsiz API anahtarı alabilirsiniz.")
-    
-    # Piyasa Gerçeği: Tolerans Oranı Ayarı
-    tolerans_orani = st.slider("Kabul Edilebilir Fark Toleransı (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.5, help="Sözleşme ile fatura arasındaki bu orandaki farklar otomatik onaylanır.")
+    api_key = st.text_input("🔑 Gemini API Anahtarı:", type="password", help="Google AI Studio üzerinden API anahtarı alabilirsiniz.")
+    tolerans_orani = st.slider("Kabul Edilebilir Fark Toleransı (%)", min_value=0.0, max_value=10.0, value=2.0, step=0.5)
     
     st.markdown("---")
     st.subheader("📊 Özet Metrikler")
-    
     try:
         df_gecmis = pd.read_sql_query("SELECT * FROM faturalar", conn)
         toplam_denetlenen = len(df_gecmis)
         engellenen_tutar = df_gecmis[(df_gecmis['durum'].str.contains('Anlaşmazlık', na=False)) & (df_gecmis['tolerans_dahilinde_mi'] == 'Hayır')]['fark'].sum()
-        
         st.metric("Denetlenen Fatura", toplam_denetlenen)
         st.metric("Engellenen Fazla Ödeme", f"{engellenen_tutar:,.2f} TL", delta_color="inverse")
-    except Exception as e:
+    except Exception:
         st.write("Henüz veri yok.")
 
-# --- ANA EKRAN SEKMELERİ ---
+# --- SEKMELER ---
 tab1, tab2, tab3 = st.tabs(["🔍 Fatura Denetle", "📋 İş Akışı ve Onay", "📈 Raporlar ve ERP Aktarımı"])
 
 with tab1:
@@ -74,7 +69,6 @@ with tab1:
         sozlesme_file = st.file_uploader("Fiyat listesini yükleyin (CSV)", type=["csv"])
 
     if fatura_file is not None:
-        # 1. SÖZLEŞMEYİ OKU
         sozlesme_data = "Sözleşme yüklenmedi."
         if sozlesme_file is not None:
             try:
@@ -84,13 +78,11 @@ with tab1:
                 st.error(f"Sözleşme okuma hatası: {e}")
 
         if st.button("🚀 Denetimi Başlat", type="primary"):
-            # API Key Kontrolü - Boşsa hata ver ve durdur.
             if not api_key:
-                st.error("⚠️ Lütfen sol menüden geçerli bir Gemini API Anahtarı girin. İşlem başlatılamadı.")
+                st.error("⚠️ Lütfen sol menüden geçerli bir Gemini API Anahtarı girin.")
                 st.stop()
             
             with st.spinner("Yapay zeka belgeyi inceliyor ve lojistik verilerini çıkarıyor..."):
-                
                 file_bytes = fatura_file.read()
                 mime_type = fatura_file.type
                 
@@ -102,7 +94,7 @@ with tab1:
                 {sozlesme_data}
                 
                 Görevin: Faturadaki verileri çıkar, sözleşme ile karşılaştır ve farkları bul.
-                Çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir metin yazma (markdown, ```json vb. kullanma, direkt süslü parantezle başla):
+                Çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir metin yazma:
                 {{
                     "Belge_Turu": "Lojistik" veya "Gecersiz",
                     "Fatura_No": "Faturadaki numara",
@@ -115,8 +107,8 @@ with tab1:
                     "Sozlesme_Tutari": 0.0,
                     "Fark": 0.0,
                     "Durum": "Anlaşmazlık Var" veya "Uyumlu",
-                    "Aciklama": "Fark varsa nedenleri (örn: Birim fiyat farkı, mesafe farkı vb.)",
-                    "AI_Guven_Skoru": 0.0 ila 1.0 arası (Belgenin netliğine göre)
+                    "Aciklama": "Fark varsa nedenleri",
+                    "AI_Guven_Skoru": 0.0 ila 1.0 arası
                 }}
                 """
                 
@@ -124,38 +116,35 @@ with tab1:
                 response = None
                 last_error = ""
                 
-                # Güncel ve desteklenen, yedekli model listesi
-                models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro']
+                # GÜNCEL VE DESTEKLENEN MODELLER
+                models_to_try = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-pro-preview']
                 
                 for model_name in models_to_try:
                     try:
+                        # Görsel/PDF önce, prompt sonra verilmeli
                         response = client.models.generate_content(
                             model=model_name, 
                             contents=[
-                                prompt, 
-                                types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+                                types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+                                prompt
                             ]
                         )
                         if response and response.text:
-                            break # Başarılı olursa döngüden çık
+                            break
                     except Exception as e:
                         last_error = str(e)
                         if "404" in last_error or "NOT_FOUND" in last_error:
-                            # Model yoksa sıradakini dene
-                            continue 
+                            continue
                         elif "503" in last_error or "429" in last_error: 
                             time.sleep(2)
                             continue
                         else: 
-                            # API Key hatası, kota hatası vs.
                             st.error(f"Kritik API Hatası ({model_name}): {last_error}")
                             break
 
-                # Yanıt kontrolü
                 if not response or not response.text:
-                    st.error(f"Sistem yanıt üretemedi. Lütfen API anahtarınızı ve internet bağlantınızı kontrol edin. (Son Hata: {last_error})")
+                    st.error(f"Sistem yanıt üretemedi. Son Hata: {last_error}")
                 else:
-                    # JSON Temizleme (Yapay zeka bazen ```json ekleyebiliyor)
                     clean_json = re.sub(r'^```json\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE)
                     try:
                         data = json.loads(clean_json)
@@ -163,7 +152,6 @@ with tab1:
                         if data.get("Belge_Turu") == "Gecersiz":
                             st.error("🚨 Geçersiz Belge! Lütfen geçerli bir lojistik faturası yükleyin.")
                         else:
-                            # --- PİYASA GERÇEĞİ: MÜKERRER KONTROLÜ (Fatura No + VKN) ---
                             cursor = conn.cursor()
                             cursor.execute("SELECT * FROM faturalar WHERE fatura_no = ? AND tedarikci_vkn = ?", 
                                            (data.get("Fatura_No"), data.get("Tedarikci_VKN")))
@@ -171,7 +159,6 @@ with tab1:
                             if cursor.fetchone():
                                 st.warning(f"⚠️ MÜKERRER FATURA! '{data.get('Tedarikci_Adi')}' firmasına ait '{data.get('Fatura_No')}' numaralı fatura daha önce işlenmiş.")
                             else:
-                                # --- PİYASA GERÇEĞİ: TOLERANS HESABI ---
                                 fark = data.get("Fark", 0.0)
                                 sozlesme_tutari = data.get("Sozlesme_Tutari", 1.0)
                                 tolerans_dahilinde = "Hayır"
@@ -181,9 +168,8 @@ with tab1:
                                     if fark_yuzdesi <= tolerans_orani:
                                         tolerans_dahilinde = "Evet"
                                         data["Durum"] = "Uyumlu (Tolerans İçinde)"
-                                        data["Aciklama"] += f" (Fark %{fark_yuzdesi:.2f}, tolerans sınırı içinde kabul edildi.)"
+                                        data["Aciklama"] += f" (Fark %{fark_yuzdesi:.2f}, tolerans sınırı içinde.)"
 
-                                # VERİTABANINA KAYDET
                                 cursor.execute("""INSERT INTO faturalar 
                                     (fatura_no, tedarikci_vkn, tedarikci_adi, fatura_tarihi, irsaliye_no, plaka, 
                                      fatura_tutari, sozlesme_tutari, fark, tolerans_dahilinde_mi, durum, ai_guven_skoru, denetim_izi) 
@@ -195,7 +181,6 @@ with tab1:
                                      f"YZ tarafından oluşturuldu. Açıklama: {data.get('Aciklama')}"))
                                 conn.commit()
                                 
-                                # SONUÇLARI GÖSTER
                                 st.success("Denetim Tamamlandı ve Sisteme Kaydedildi!")
                                 m1, m2, m3, m4 = st.columns(4)
                                 m1.metric("Fatura Tutarı", f"{data.get('Fatura_Tutari')} TL")
@@ -212,7 +197,7 @@ with tab1:
                                     st.success(f"✅ {data.get('Aciklama')}")
                                     
                     except json.JSONDecodeError:
-                        st.error("Yapay zeka geçerli bir JSON formatı üretemedi. Lütfen tekrar deneyin.")
+                        st.error("Yapay zeka geçerli bir JSON formatı üretemedi.")
                         with st.expander("Ham Yanıtı Gör"):
                             st.write(response.text)
 
@@ -223,7 +208,6 @@ with tab2:
     df_is_akisi = pd.read_sql_query("SELECT * FROM faturalar ORDER BY id DESC", conn)
     if not df_is_akisi.empty:
         for index, row in df_is_akisi.iterrows():
-            # Durum ikonları
             durum_ikon = "🟢" if "Uyumlu" in str(row['durum']) else "🔴"
             
             with st.expander(f"{durum_ikon} {row['fatura_no']} - {row['tedarikci_adi']} ({row['durum']})"):
@@ -234,7 +218,6 @@ with tab2:
                 st.write(f"**Tutarlar:** Fatura: {row['fatura_tutari']} TL | Sözleşme: {row['sozlesme_tutari']} TL | **Fark: {row['fark']} TL**")
                 st.write(f"**Denetim İzi:** {row['denetim_izi']}")
                 
-                # İŞ AKIŞI BUTONLARI
                 c1, c2, c3 = st.columns(3)
                 if c1.button(f"✅ Onayla", key=f"onay_{row['id']}", disabled=(row['onay_durumu']=="Onaylandı")):
                     conn.execute(f"UPDATE faturalar SET onay_durumu = 'Onaylandı', denetim_izi = denetim_izi || ' | {datetime.now().strftime('%d-%m %H:%M')} Finans Onayladı' WHERE id = {row['id']}")
@@ -257,14 +240,12 @@ with tab3:
     
     df_rapor = pd.read_sql_query("SELECT * FROM faturalar", conn)
     if not df_rapor.empty:
-        # ERP'nin seveceği temiz format
         df_erp = df_rapor[['fatura_no', 'tedarikci_vkn', 'tedarikci_adi', 'fatura_tarihi', 'fatura_tutari', 'onay_durumu']].copy()
         df_erp.rename(columns={'fatura_no': 'FATURA_NO', 'tedarikci_vkn': 'VERGI_NO', 'tedarikci_adi': 'UNVAN', 'fatura_tarihi': 'TARIH', 'fatura_tutari': 'TUTAR', 'onay_durumu': 'DURUM'}, inplace=True)
         
         st.dataframe(df_erp, use_container_width=True)
         
-        # ERP AKTARIMI (CSV)
-        csv = df_erp.to_csv(index=False).encode('utf-8-sig') # utf-8-sig Excel ve ERP uyumu içindir
+        csv = df_erp.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
             label="📥 ERP İçin İndir (CSV)",
             data=csv,
@@ -275,5 +256,4 @@ with tab3:
     else:
         st.info("Raporlanacak veri bulunamadı.")
 
-# Veritabanı bağlantısını kapat
 conn.close()
