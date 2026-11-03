@@ -16,17 +16,15 @@ st.set_page_config(page_title="Akıllı Filo Denetim", page_icon="📄", layout=
 st.title("📄 Akıllı Filo Lojistiği Fatura Denetimi")
 st.write("Faturayı ve sözleşme fiyat listenizi yükleyin, yapay zeka saniyeler içinde denetlesin.")
 
-# API Anahtarı Girişi (Sol Menüde tutmak daha temizdir)
+# API Anahtarı Girişi
 with st.sidebar:
     st.header("Ayarlar")
     api_key = st.text_input("🔑 Gemini API Anahtarı:", type="password")
     st.markdown("---")
-    st.markdown("**Nasıl Kullanılır?**")
-    st.markdown("1. Sözleşme fiyat listenizi (CSV) yükleyin.\n2. Faturayı yükleyin.\n3. Analizi başlatın.")
-
-# Örnek CSV indirme butonu (Kullanıcı formata anında adapte olsun)
-ornek_csv = "Firma;Guzergah;AracTipi;NavlunFiyati\nABC Lojistik;İstanbul-Ankara;TIR;4500\nABC Lojistik;İzmir-Bursa;Kamyon;2800"
-st.sidebar.download_button(label="📥 Örnek Sözleşme CSV İndir", data=ornek_csv, file_name="ornek_sozlesme.csv", mime="text/csv")
+    
+    # Örnek CSV indirme butonu
+    ornek_csv = "Firma;Guzergah;AracTipi;NavlunFiyati\nABC Lojistik;İstanbul-Ankara;TIR;4500\nABC Lojistik;İzmir-Bursa;Kamyon;2800"
+    st.download_button(label="📥 Örnek Sözleşme CSV İndir", data=ornek_csv, file_name="ornek_sozlesme.csv", mime="text/csv")
 
 col1, col2 = st.columns(2)
 
@@ -44,7 +42,7 @@ if fatura_file is not None and api_key:
     sozlesme_data = ""
     if sozlesme_file is not None:
         try:
-            df_sozlesme = pd.read_csv(sozlesme_file, sep=None, engine='python') # Ayırıcıyı otomatik bul
+            df_sozlesme = pd.read_csv(sozlesme_file, sep=None, engine='python')
             sozlesme_data = df_sozlesme.to_string(index=False)
             with st.expander("📄 Yüklenen Sözleşme Verisi"):
                 st.dataframe(df_sozlesme)
@@ -76,7 +74,7 @@ if fatura_file is not None and api_key:
         
         with st.spinner("Yapay zeka faturayı sözleşmeyle karşılaştırıyor..."):
             
-            # Prompt (Yapay zekaya verilecek katı kurallar)
+            # Prompt (Belge türü kontrolü eklendi)
             prompt = f"""
             Sen uzman bir finansal denetçisin. 
             Aşağıda bir faturadan OCR ile okunmuş metin ve bir sözleşme fiyat listesi (CSV) var.
@@ -87,18 +85,20 @@ if fatura_file is not None and api_key:
             Sözleşme Fiyat Listesi:
             {sozlesme_data}
             
-            Görevin: Faturadaki verileri (Tedarikçi, Güzergah, Araç Tipi, Navlun Bedeli) bulup sözleşme listesindeki fiyatlarla karşılaştırmak.
-            Eğer faturadaki fiyat sözleşmeden yüksekse veya listede yoksa "Anlaşmazlık" olarak işaretle.
+            Görevin: Önce bu belgenin bir "Lojistik / Nakliye / Filo" faturası olup olmadığını kontrol et. 
+            Eğer belge lojistik ile alakalı değilse (örn: su faturası, elektrik faturası, market fişi), JSON'daki "Belge_Turu" değerini "Gecersiz" yap ve diğer işlemleri durdur.
+            Eğer lojistik faturasıysa; faturadaki verileri (Tedarikçi, Güzergah, Araç Tipi, Navlun Bedeli) bulup sözleşme listesindeki fiyatlarla karşılaştır.
             
             Lütfen çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir açıklama yazma:
             {{
+                "Belge_Turu": "Lojistik" veya "Gecersiz",
                 "Tedarikci": "Faturadaki firma adı",
                 "Guzergah": "Faturadaki güzergah (varsa)",
                 "Fatura_Navlun": 1250.0,
                 "Sozlesme_Navlun": 1000.0,
                 "Fark": 250.0,
                 "Durum": "Anlaşmazlık Var" veya "Uyumlu",
-                "Aciklama": "Faturadaki navlun sözleşmeden yüksek vb."
+                "Aciklama": "Açıklama"
             }}
             """
 
@@ -122,34 +122,35 @@ if fatura_file is not None and api_key:
                         break
 
             if response is not None:
-                # Gelen yanıtı temizle ve JSON'a çevir
                 raw_text = response.text.strip()
-                # Bazen LLM ```json ... ``` şeklinde yazar, onu temizle
                 clean_json = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
                 
                 try:
                     data = json.loads(clean_json)
                     
-                    # EKRANA GÜZEL BİR TABLO (DASHBOARD) ÇİZ
-                    st.success("Analiz Tamamlandı!")
-                    
-                    # Metrik Kartları
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Fatura Navlun", f"{data.get('Fatura_Navlun', 0)} TL")
-                    m2.metric("Sözleşme Navlun", f"{data.get('Sozlesme_Navlun', 0)} TL")
-                    fark = data.get('Fark', 0)
-                    m3.metric("Fark", f"{fark} TL", delta_color="inverse" if fark > 0 else "normal")
-                    
-                    # Durum Uyarısı
-                    if "Anlaşmazlık" in data.get('Durum', ''):
-                        st.error(f"🚨 **{data.get('Durum')}** - {data.get('Aciklama')}")
+                    # BELGE TÜRÜ KONTROLÜ
+                    if data.get("Belge_Turu") == "Gecersiz":
+                        st.error("🚨 **Geçersiz Belge!** Yüklediğiniz belge bir Lojistik/Nakliye faturası değildir. Lütfen geçerli bir fatura yükleyin.")
                     else:
-                        st.success(f"✅ **{data.get('Durum')}** - {data.get('Aciklama')}")
+                        st.success("Analiz Tamamlandı!")
                         
-                    # Detay Tablosu
-                    df_sonuc = pd.DataFrame(list(data.items()), columns=["Özellik", "Değer"])
-                    st.dataframe(df_sonuc, use_container_width=True, hide_index=True)
-                    
+                        # Metrik Kartları
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Fatura Navlun", f"{data.get('Fatura_Navlun', 0)} TL")
+                        m2.metric("Sözleşme Navlun", f"{data.get('Sozlesme_Navlun', 0)} TL")
+                        fark = data.get('Fark', 0)
+                        m3.metric("Fark", f"{fark} TL", delta_color="inverse" if fark > 0 else "normal")
+                        
+                        # Durum Uyarısı
+                        if "Anlaşmazlık" in data.get('Durum', ''):
+                            st.error(f"🚨 **{data.get('Durum')}** - {data.get('Aciklama')}")
+                        else:
+                            st.success(f"✅ **{data.get('Durum')}** - {data.get('Aciklama')}")
+                            
+                        # Detay Tablosu
+                        df_sonuc = pd.DataFrame(list(data.items()), columns=["Özellik", "Değer"])
+                        st.dataframe(df_sonuc, use_container_width=True, hide_index=True)
+                        
                 except json.JSONDecodeError:
                     st.error("Yapay zeka geçerli bir format döndüremedi. Ham çıktı:")
                     st.code(raw_text)
