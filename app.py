@@ -2,100 +2,87 @@ import streamlit as st
 import pytesseract
 from PIL import Image
 from pdf2image import convert_from_bytes
-import re
+import google.generativeai as genai
 
-# Tesseract Yol Ayarı (Streamlit Cloud için hayati önem taşır)
+# Tesseract Yol Ayarı
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
-# Sayfa Ayarları
-st.set_page_config(page_title="Filo Lojistiği Fatura Denetim", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Akıllı Fatura Denetim", page_icon="📄", layout="wide")
 
-st.title("📄 Filo Lojistiği Fatura Denetim Prototipi (Gerçek OCR Aktif)")
-st.write("Bu araç, yüklenen faturaları tarar, metni okur ve matematiksel/sözleşmesel anlaşmazlıkları tespit eder.")
+st.title("📄 Akıllı Fatura Denetim Prototipi (LLM Aktif)")
+st.write("Bu araç, belgeyi okur ve yapay zeka (Gemini) ile anlaşmazlıkları analiz eder.")
+
+# API Anahtarı Girişi (Güvenlik nedeniyle kodun içine gömülmedi, arayüzden girilecek)
+api_key = st.text_input("🔑 Google Gemini API Anahtarınızı Girin:", type="password")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("1. Fatura Yükle")
-    fatura_file = st.file_uploader("Faturayı yükleyin (PDF, JPG, PNG)", type=["pdf", "jpg", "png"], key="fatura")
+    st.subheader("1. Belge Yükle")
+    fatura_file = st.file_uploader("Fatura yükleyin (PDF, JPG, PNG)", type=["pdf", "jpg", "png"])
 
 with col2:
-    st.subheader("2. Sözleşme & Ses")
-    sozlesme_file = st.file_uploader("Sözleşme/Fiyat Listesi Yükle (İsteğe Bağlı)", type=["pdf", "csv", "xlsx"], key="sozlesme")
-    ses_file = st.file_uploader("Sürücü Sesli Notu Yükle (İsteğe Bağlı)", type=["wav", "mp3", "m4a"], key="ses")
+    st.subheader("2. Sözleşme (İsteğe Bağlı)")
+    sozlesme_text = st.text_area("Sözleşme/Fiyat Kurallarını Yazın:", "Örnek: Navlun bedeli maksimum 500 TL olmalıdır.")
 
 if fatura_file is not None:
     st.divider()
     
-    # 1. OCR İŞLEMİ (Gerçek Okuma)
-    with st.spinner("Yapay zeka faturayı okuyor, lütfen bekleyin..."):
+    # 1. OCR İŞLEMİ
+    with st.spinner("Belge okunuyor..."):
         try:
             if fatura_file.type == "application/pdf":
-                # PDF'i resme çevir ve ilk sayfayı oku
                 images = convert_from_bytes(fatura_file.read())
                 image = images[0]
             else:
-                # Direkt resim olarak aç
                 image = Image.open(fatura_file)
             
-            # Tesseract ile metni çıkar (Türkçe dil desteğiyle)
             extracted_text = pytesseract.image_to_string(image, lang='tur')
-            
         except Exception as e:
-            st.error(f"OCR Hatası: Belge okunamadı. Hata detayı: {e}")
+            st.error(f"OCR Hatası: {e}")
             extracted_text = ""
 
-    # Okunan metni göster
-    with st.expander("🔍 Faturadan Okunan Ham Metni Gör"):
+    with st.expander("🔍 Belgeden Okunan Ham Metni Gör"):
         st.text(extracted_text)
 
-    st.subheader("⚖️ Denetim ve Anlaşmazlık Tespiti")
-    
-    # Rakamları bul
-    tutarlar = re.findall(r'\b\d{1,3}(?:\.\d{3})*(?:,\d{2})?\b', extracted_text)
-    
-    if len(extracted_text.strip()) < 10:
-        st.warning("⚠️ Belgeden yeterli metin okunamadı. Lütfen daha net bir görsel yükleyin veya sistem dosyalarını (packages.txt) kontrol edin.")
+    # 2. YAPAY ZEKA (LLM) ANALİZİ
+    if len(extracted_text.strip()) > 10 and api_key:
+        st.subheader("🤖 Yapay Zeka Denetim Raporu")
+        
+        with st.spinner("Yapay zeka belgeyi analiz ediyor..."):
+            try:
+                # Gemini'yi yapılandır
+                genai.configure(api_key=api_key)
+                # Model güncellemesi (Bazı API sürümlerinde 1.5-flash yerine 1.0-pro gerekebilir ama önce bunu deneyelim)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Prompt (Yapay Zekaya Verilecek Görev)
+                prompt = f"""
+                Sen uzman bir finansal denetçisin. Aşağıda bir belgeden OCR ile okunmuş metin var.
+                Ekteki sözleşme kurallarını da göz önünde bulundurarak bu belgeyi analiz et.
+                
+                Belge Metni:
+                {extracted_text}
+                
+                Sözleşme Kuralları:
+                {sozlesme_text}
+                
+                Lütfen şu formatta kısa ve net bir rapor yaz:
+                1. Belge Türü (Fatura mı, fiş mi, ne faturası?)
+                2. Toplam Ödenecek Tutar
+                3. Matematiksel Veya Sözleşmesel Bir Anlaşmazlık (Hata) Var Mı? (Evet/Hayır)
+                4. Eğer hata varsa detaylı açıklaması.
+                """
+                
+                response = model.generate_content(prompt)
+                st.info(response.text)
+                
+            except Exception as e:
+                st.error(f"Yapay Zeka Hatası: Lütfen API anahtarınızı kontrol edin. Hata Detayı: {e}")
+    elif not api_key:
+        st.warning("⚠️ Analizi başlatmak için lütfen yukarıya Gemini API Anahtarınızı girin.")
     else:
-        st.success("✅ Fatura taranıp metne döküldü.")
-        
-        st.info("💡 **Bilgi:** Şu an metin okuma aktif. Aşağıdaki tutarlar, kural motorunu test etmek için simüle edilmiştir.")
-        
-        # Hata senaryosu simülasyonu
-        ara_toplam = 1000.0
-        vergi = 200.0
-        toplam_tutar = 1300.0
-        navlun_fiyati = 600.0
-        sozlesme_navlun_fiyati = 500.0
-        
-        st.write("### 📊 Sistemin Çıkardığı Veriler (Test Verisi)")
-        st.write(f"- **Ara Toplam:** {ara_toplam} TL")
-        st.write(f"- **Vergi:** {vergi} TL")
-        st.write(f"- **Genel Toplam:** {toplam_tutar} TL")
-        st.write(f"- **Navlun Bedeli:** {navlun_fiyati} TL")
-
-        # Kural Motoru
-        hata_var = False
-        hesaplanan_toplam = ara_toplam + vergi
-        
-        if hesaplanan_toplam != toplam_tutar:
-            st.error(f"🚨 **Matematiksel Hata:** Genel toplam ({toplam_tutar} TL), ara toplam ve vergi toplamına ({hesaplanan_toplam} TL) eşit değil.")
-            hata_var = True
-        else:
-            st.success("✅ Matematiksel tutarlılık sağlandı.")
-            
-        if navlun_fiyati > sozlesme_navlun_fiyati:
-            st.error(f"🚨 **Sözleşme İhlali:** Faturadaki navlun bedeli ({navlun_fiyati} TL), sözleşmeden ({sozlesme_navlun_fiyati} TL) yüksek!")
-            hata_var = True
-        else:
-            st.success("✅ Navlun bedeli sözleşme ile uyumlu.")
-
-        st.divider()
-        st.subheader("🤖 Yapay Zeka Anlaşmazlık Raporu")
-        if hata_var:
-            st.info("**AI Raporu:** Faturada tespit edilen tutarsızlıklar bulunmaktadır. Lütfen yukarıdaki uyarıları inceleyin.")
-        else:
-            st.info("**AI Raporu:** Fatura temiz görünüyor.")
+        st.warning("⚠️ Belgeden yeterli metin okunamadı.")
 
 else:
-    st.info("Lütfen analiz etmek için bir fatura yükleyin.")
+    st.info("Lütfen analiz etmek için bir belge yükleyin.")
