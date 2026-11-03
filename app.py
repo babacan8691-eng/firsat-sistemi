@@ -116,12 +116,11 @@ with tab1:
                 response = None
                 last_error = ""
                 
-                # GÜNCEL VE DESTEKLENEN MODELLER
-                models_to_try = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-pro-preview']
+                # GÜNCEL VE DESTEKLENEN MODELLER (404 hatasını önlemek için)
+                models_to_try = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash']
                 
                 for model_name in models_to_try:
                     try:
-                        # Görsel/PDF önce, prompt sonra verilmeli
                         response = client.models.generate_content(
                             model=model_name, 
                             contents=[
