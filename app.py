@@ -53,8 +53,10 @@ if fatura_file is not None:
             try:
                 # Gemini'yi yapılandır
                 genai.configure(api_key=api_key)
-                # Model güncellemesi (Bazı API sürümlerinde 1.5-flash yerine 1.0-pro gerekebilir ama önce bunu deneyelim)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # Model güncellemesi: 'gemini-1.5-flash-latest' hatayı çözecektir.
+                # Eğer yine sorun yaşarsanız 'gemini-pro' yazabilirsiniz.
+                model = genai.GenerativeModel('gemini-1.5-flash-latest')
                 
                 # Prompt (Yapay Zekaya Verilecek Görev)
                 prompt = f"""
@@ -75,10 +77,12 @@ if fatura_file is not None:
                 """
                 
                 response = model.generate_content(prompt)
+                
+                # Raporu ekrana yazdır
                 st.info(response.text)
                 
             except Exception as e:
-                st.error(f"Yapay Zeka Hatası: Lütfen API anahtarınızı kontrol edin. Hata Detayı: {e}")
+                st.error(f"Yapay Zeka Hatası: Lütfen API anahtarınızı kontrol edin veya sistem yöneticinize başvurun. Hata Detayı: {e}")
     elif not api_key:
         st.warning("⚠️ Analizi başlatmak için lütfen yukarıya Gemini API Anahtarınızı girin.")
     else:
