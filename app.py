@@ -4,6 +4,9 @@ from PIL import Image
 from pdf2image import convert_from_bytes
 import re
 
+# Tesseract Yol Ayarı (Streamlit Cloud için hayati önem taşır)
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+
 # Sayfa Ayarları
 st.set_page_config(page_title="Filo Lojistiği Fatura Denetim", page_icon="📄", layout="wide")
 
@@ -39,7 +42,7 @@ if fatura_file is not None:
             extracted_text = pytesseract.image_to_string(image, lang='tur')
             
         except Exception as e:
-            st.error(f"OCR Hatası: Belge okunamadı. Lütfen 'packages.txt' ve 'requirements.txt' dosyalarının doğru eklendiğinden emin olun. Hata detayı: {e}")
+            st.error(f"OCR Hatası: Belge okunamadı. Hata detayı: {e}")
             extracted_text = ""
 
     # Okunan metni göster
