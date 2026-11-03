@@ -3,34 +3,58 @@ import pytesseract
 from PIL import Image
 from pdf2image import convert_from_bytes
 from google import genai
+import pandas as pd
+import json
 import time
+import re
 
 # Tesseract Yol Ayarı
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
-st.set_page_config(page_title="Akıllı Fatura Denetim", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Akıllı Filo Denetim", page_icon="📄", layout="wide")
 
-st.title("📄 Akıllı Fatura Denetim Prototipi (LLM Aktif)")
-st.write("Bu araç, belgeyi okur ve yapay zeka (Gemini) ile anlaşmazlıkları analiz eder.")
+st.title("📄 Akıllı Filo Lojistiği Fatura Denetimi")
+st.write("Faturayı ve sözleşme fiyat listenizi yükleyin, yapay zeka saniyeler içinde denetlesin.")
 
-# API Anahtarı Girişi
-api_key = st.text_input("🔑 Google Gemini API Anahtarınızı Girin:", type="password")
+# API Anahtarı Girişi (Sol Menüde tutmak daha temizdir)
+with st.sidebar:
+    st.header("Ayarlar")
+    api_key = st.text_input("🔑 Gemini API Anahtarı:", type="password")
+    st.markdown("---")
+    st.markdown("**Nasıl Kullanılır?**")
+    st.markdown("1. Sözleşme fiyat listenizi (CSV) yükleyin.\n2. Faturayı yükleyin.\n3. Analizi başlatın.")
+
+# Örnek CSV indirme butonu (Kullanıcı formata anında adapte olsun)
+ornek_csv = "Firma;Guzergah;AracTipi;NavlunFiyati\nABC Lojistik;İstanbul-Ankara;TIR;4500\nABC Lojistik;İzmir-Bursa;Kamyon;2800"
+st.sidebar.download_button(label="📥 Örnek Sözleşme CSV İndir", data=ornek_csv, file_name="ornek_sozlesme.csv", mime="text/csv")
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("1. Belge Yükle")
-    fatura_file = st.file_uploader("Fatura yükleyin (PDF, JPG, PNG)", type=["pdf", "jpg", "png"])
+    st.subheader("1. Fatura Yükle")
+    fatura_file = st.file_uploader("Faturayı yükleyin (PDF, JPG, PNG)", type=["pdf", "jpg", "png"])
 
 with col2:
-    st.subheader("2. Sözleşme (İsteğe Bağlı)")
-    sozlesme_text = st.text_area("Sözleşme/Fiyat Kurallarını Yazın:", "Örnek: Navlun bedeli maksimum 500 TL olmalıdır.")
+    st.subheader("2. Sözleşme Fiyat Listesi (CSV)")
+    sozlesme_file = st.file_uploader("Fiyat listesini yükleyin (CSV)", type=["csv"])
 
-if fatura_file is not None:
+if fatura_file is not None and api_key:
+    
+    # 1. SÖZLEŞMEYİ OKU
+    sozlesme_data = ""
+    if sozlesme_file is not None:
+        try:
+            df_sozlesme = pd.read_csv(sozlesme_file, sep=None, engine='python') # Ayırıcıyı otomatik bul
+            sozlesme_data = df_sozlesme.to_string(index=False)
+            with st.expander("📄 Yüklenen Sözleşme Verisi"):
+                st.dataframe(df_sozlesme)
+        except Exception as e:
+            st.error(f"Sözleşme okuma hatası: {e}")
+
     st.divider()
     
-    # 1. OCR İŞLEMİ
-    with st.spinner("Belge okunuyor..."):
+    # 2. OCR İŞLEMİ
+    with st.spinner("Fatura taranıyor..."):
         try:
             if fatura_file.type == "application/pdf":
                 images = convert_from_bytes(fatura_file.read())
@@ -43,37 +67,43 @@ if fatura_file is not None:
             st.error(f"OCR Hatası: {e}")
             extracted_text = ""
 
-    with st.expander("🔍 Belgeden Okunan Ham Metni Gör"):
+    with st.expander("🔍 Faturadan Okunan Metni Gör"):
         st.text(extracted_text)
 
-    # 2. YAPAY ZEKA (LLM) ANALİZİ
-    if len(extracted_text.strip()) > 10 and api_key:
+    # 3. YAPAY ZEKA ANALİZİ VE JSON ÇIKTISI
+    if len(extracted_text.strip()) > 10:
         st.subheader("🤖 Yapay Zeka Denetim Raporu")
         
-        with st.spinner("Yapay zeka belgeyi analiz ediyor..."):
-            prompt = f"""
-            Sen uzman bir finansal denetçisin. Aşağıda bir belgeden OCR ile okunmuş metin var.
-            Ekteki sözleşme kurallarını da göz önünde bulundurarak bu belgeyi analiz et.
+        with st.spinner("Yapay zeka faturayı sözleşmeyle karşılaştırıyor..."):
             
-            Belge Metni:
+            # Prompt (Yapay zekaya verilecek katı kurallar)
+            prompt = f"""
+            Sen uzman bir finansal denetçisin. 
+            Aşağıda bir faturadan OCR ile okunmuş metin ve bir sözleşme fiyat listesi (CSV) var.
+            
+            Fatura Metni:
             {extracted_text}
             
-            Sözleşme Kuralları:
-            {sozlesme_text}
+            Sözleşme Fiyat Listesi:
+            {sozlesme_data}
             
-            Lütfen şu formatta kısa ve net bir rapor yaz:
-            1. Belge Türü (Fatura mı, fiş mi, ne faturası?)
-            2. Toplam Ödenecek Tutar
-            3. Matematiksel Veya Sözleşmesel Bir Anlaşmazlık (Hata) Var Mı? (Evet/Hayır)
-            4. Eğer hata varsa detaylı açıklaması.
+            Görevin: Faturadaki verileri (Tedarikçi, Güzergah, Araç Tipi, Navlun Bedeli) bulup sözleşme listesindeki fiyatlarla karşılaştırmak.
+            Eğer faturadaki fiyat sözleşmeden yüksekse veya listede yoksa "Anlaşmazlık" olarak işaretle.
+            
+            Lütfen çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir açıklama yazma:
+            {{
+                "Tedarikci": "Faturadaki firma adı",
+                "Guzergah": "Faturadaki güzergah (varsa)",
+                "Fatura_Navlun": 1250.0,
+                "Sozlesme_Navlun": 1000.0,
+                "Fark": 250.0,
+                "Durum": "Anlaşmazlık Var" veya "Uyumlu",
+                "Aciklama": "Faturadaki navlun sözleşmeden yüksek vb."
+            }}
             """
-            
-            # google-genai istemcisi (SDK, geçici hatalarda otomatik yeniden dener)
+
             client = genai.Client(api_key=api_key)
             response = None
-            error_message = ""
-            
-            # Sırayla denenecek modeller (Yoğunluk durumunda hafif modele geçiş)
             models_to_try = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']
             
             for model_name in models_to_try:
@@ -82,27 +112,56 @@ if fatura_file is not None:
                         model=model_name,
                         contents=prompt
                     )
-                    break # Başarılı olursa döngüden çık
+                    break
                 except Exception as e:
-                    error_message = str(e)
-                    # Eğer 503 (Yoğunluk) veya 429 (Hız Limiti) hatasıysa kısa bir süre bekle ve sonraki modeli dene
-                    if "503" in error_message or "429" in error_message:
-                        time.sleep(2) # 2 saniye bekle
+                    if "503" in str(e) or "429" in str(e):
+                        time.sleep(1.5)
                         continue
                     else:
-                        # API anahtarı hatası vb. durumlarda döngüyü kır
+                        st.error(f"API Hatası: {e}")
                         break
 
             if response is not None:
-                st.success(f"Analiz '{model_name}' modeli ile tamamlandı.")
-                st.info(response.text)
+                # Gelen yanıtı temizle ve JSON'a çevir
+                raw_text = response.text.strip()
+                # Bazen LLM ```json ... ``` şeklinde yazar, onu temizle
+                clean_json = re.sub(r'^```json\s*|\s*```$', '', raw_text, flags=re.MULTILINE)
+                
+                try:
+                    data = json.loads(clean_json)
+                    
+                    # EKRANA GÜZEL BİR TABLO (DASHBOARD) ÇİZ
+                    st.success("Analiz Tamamlandı!")
+                    
+                    # Metrik Kartları
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Fatura Navlun", f"{data.get('Fatura_Navlun', 0)} TL")
+                    m2.metric("Sözleşme Navlun", f"{data.get('Sozlesme_Navlun', 0)} TL")
+                    fark = data.get('Fark', 0)
+                    m3.metric("Fark", f"{fark} TL", delta_color="inverse" if fark > 0 else "normal")
+                    
+                    # Durum Uyarısı
+                    if "Anlaşmazlık" in data.get('Durum', ''):
+                        st.error(f"🚨 **{data.get('Durum')}** - {data.get('Aciklama')}")
+                    else:
+                        st.success(f"✅ **{data.get('Durum')}** - {data.get('Aciklama')}")
+                        
+                    # Detay Tablosu
+                    df_sonuc = pd.DataFrame(list(data.items()), columns=["Özellik", "Değer"])
+                    st.dataframe(df_sonuc, use_container_width=True, hide_index=True)
+                    
+                except json.JSONDecodeError:
+                    st.error("Yapay zeka geçerli bir format döndüremedi. Ham çıktı:")
+                    st.code(raw_text)
             else:
-                st.error(f"Yapay Zeka Hatası: Tüm modeller şu an yoğun veya geçici bir sorun var. Lütfen 1-2 dakika sonra tekrar deneyin. Detay: {error_message}")
-
-    elif not api_key:
-        st.warning("⚠️ Analizi başlatmak için lütfen yukarıya Gemini API Anahtarınızı girin.")
+                st.error("Modeller şu an yoğun, lütfen tekrar deneyin.")
+                
+    elif not sozlesme_file:
+        st.warning("⚠️ Lütfen karşılaştırma yapmak için bir Sözleşme (CSV) yükleyin.")
     else:
         st.warning("⚠️ Belgeden yeterli metin okunamadı.")
 
+elif not api_key:
+    st.info("Başlamak için sol menüden API anahtarınızı girin.")
 else:
-    st.info("Lütfen analiz etmek için bir belge yükleyin.")
+    st.info("Lütfen analiz etmek için Fatura yükleyin.")
