@@ -1,7 +1,1 @@
 streamlit
-pandas
-requests
-yfinance
-plotly
-numpy
-streamlit-autorefresh
