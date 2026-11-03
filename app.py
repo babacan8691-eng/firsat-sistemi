@@ -2,7 +2,7 @@ import streamlit as st
 import pytesseract
 from PIL import Image
 from pdf2image import convert_from_bytes
-import google.generativeai as genai
+from google import genai
 
 # Tesseract Yol Ayarı
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
@@ -51,14 +51,10 @@ if fatura_file is not None:
         
         with st.spinner("Yapay zeka belgeyi analiz ediyor..."):
             try:
-                # Gemini'yi yapılandır
-                genai.configure(api_key=api_key)
+                # Yeni google-genai SDK'sı ile istemci oluşturma
+                client = genai.Client(api_key=api_key)
                 
-                # Model güncellemesi: Artık kullanılmayan 'gemini-1.5-flash' yerine 'gemini-2.0-flash' kullanıyoruz.
-                # Eğer bu modelde de sorun yaşarsanız 'gemini-2.5-flash' deneyebilirsiniz.
-                model = genai.GenerativeModel('gemini-2.0-flash')
-                
-                # Prompt (Yapay Zekaya Verilecek Görev)
+                # Hata mesajının önerdiği güncel model: 'gemini-3.8-flash'
                 prompt = f"""
                 Sen uzman bir finansal denetçisin. Aşağıda bir belgeden OCR ile okunmuş metin var.
                 Ekteki sözleşme kurallarını da göz önünde bulundurarak bu belgeyi analiz et.
@@ -76,7 +72,10 @@ if fatura_file is not None:
                 4. Eğer hata varsa detaylı açıklaması.
                 """
                 
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model='gemini-3.8-flash',
+                    contents=prompt
+                )
                 
                 # Raporu ekrana yazdır
                 st.info(response.text)
