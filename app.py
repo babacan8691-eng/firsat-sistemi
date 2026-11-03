@@ -3,6 +3,7 @@ import pytesseract
 from PIL import Image
 from pdf2image import convert_from_bytes
 from google import genai
+import time
 
 # Tesseract Yol Ayarı
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
@@ -50,38 +51,56 @@ if fatura_file is not None:
         st.subheader("🤖 Yapay Zeka Denetim Raporu")
         
         with st.spinner("Yapay zeka belgeyi analiz ediyor..."):
-            try:
-                # Yeni google-genai SDK'sı ile istemci oluşturma
-                client = genai.Client(api_key=api_key)
-                
-                # Hata mesajının önerdiği güncel model: 'gemini-3.8-flash'
-                prompt = f"""
-                Sen uzman bir finansal denetçisin. Aşağıda bir belgeden OCR ile okunmuş metin var.
-                Ekteki sözleşme kurallarını da göz önünde bulundurarak bu belgeyi analiz et.
-                
-                Belge Metni:
-                {extracted_text}
-                
-                Sözleşme Kuralları:
-                {sozlesme_text}
-                
-                Lütfen şu formatta kısa ve net bir rapor yaz:
-                1. Belge Türü (Fatura mı, fiş mi, ne faturası?)
-                2. Toplam Ödenecek Tutar
-                3. Matematiksel Veya Sözleşmesel Bir Anlaşmazlık (Hata) Var Mı? (Evet/Hayır)
-                4. Eğer hata varsa detaylı açıklaması.
-                """
-                
-                response = client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt
-                )
-                
-                # Raporu ekrana yazdır
+            prompt = f"""
+            Sen uzman bir finansal denetçisin. Aşağıda bir belgeden OCR ile okunmuş metin var.
+            Ekteki sözleşme kurallarını da göz önünde bulundurarak bu belgeyi analiz et.
+            
+            Belge Metni:
+            {extracted_text}
+            
+            Sözleşme Kuralları:
+            {sozlesme_text}
+            
+            Lütfen şu formatta kısa ve net bir rapor yaz:
+            1. Belge Türü (Fatura mı, fiş mi, ne faturası?)
+            2. Toplam Ödenecek Tutar
+            3. Matematiksel Veya Sözleşmesel Bir Anlaşmazlık (Hata) Var Mı? (Evet/Hayır)
+            4. Eğer hata varsa detaylı açıklaması.
+            """
+            
+            client = genai.Client(api_key=api_key)
+            response = None
+            
+            # Birincil Model: gemini-3.8-flash (Otomatik Yeniden Deneme ile)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-3.8-flash',
+                        contents=prompt
+                    )
+                    break # Başarılı olursa döngüden çık
+                except Exception as e:
+                    if "503" in str(e) and attempt < max_retries - 1:
+                        time.sleep(2) # 2 saniye bekle ve tekrar dene
+                        continue
+                    else:
+                        break # Diğer hatalarda veya son denemede döngüden çık
+
+            # Yedek Model: Eğer birincil model başarısız olursa gemini-3.6-flash'e geç
+            if response is None:
+                try:
+                    st.warning("Birincil model şu an yoğun, yedek model deneniyor...")
+                    response = client.models.generate_content(
+                        model='gemini-3.6-flash',
+                        contents=prompt
+                    )
+                except Exception as e:
+                    st.error(f"Yapay Zeka Hatası: Her iki model de yanıt veremedi. Lütfen daha sonra tekrar deneyin. Detay: {e}")
+
+            if response is not None:
                 st.info(response.text)
-                
-            except Exception as e:
-                st.error(f"Yapay Zeka Hatası: Lütfen API anahtarınızı kontrol edin veya sistem yöneticinize başvurun. Hata Detayı: {e}")
+
     elif not api_key:
         st.warning("⚠️ Analizi başlatmak için lütfen yukarıya Gemini API Anahtarınızı girin.")
     else:
