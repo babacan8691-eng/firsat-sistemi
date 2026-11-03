@@ -12,7 +12,7 @@ st.set_page_config(page_title="Akıllı Fatura Denetim", page_icon="📄", layou
 st.title("📄 Akıllı Fatura Denetim Prototipi (LLM Aktif)")
 st.write("Bu araç, belgeyi okur ve yapay zeka (Gemini) ile anlaşmazlıkları analiz eder.")
 
-# API Anahtarı Girişi (Güvenlik nedeniyle kodun içine gömülmedi, arayüzden girilecek)
+# API Anahtarı Girişi
 api_key = st.text_input("🔑 Google Gemini API Anahtarınızı Girin:", type="password")
 
 col1, col2 = st.columns(2)
@@ -54,9 +54,9 @@ if fatura_file is not None:
                 # Gemini'yi yapılandır
                 genai.configure(api_key=api_key)
                 
-                # Model güncellemesi: 'gemini-1.5-flash-latest' hatayı çözecektir.
-                # Eğer yine sorun yaşarsanız 'gemini-pro' yazabilirsiniz.
-                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                # Model güncellemesi: Artık kullanılmayan 'gemini-1.5-flash' yerine 'gemini-2.0-flash' kullanıyoruz.
+                # Eğer bu modelde de sorun yaşarsanız 'gemini-2.5-flash' deneyebilirsiniz.
+                model = genai.GenerativeModel('gemini-2.0-flash')
                 
                 # Prompt (Yapay Zekaya Verilecek Görev)
                 prompt = f"""
