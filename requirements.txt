@@ -2,4 +2,4 @@ streamlit
 pytesseract
 Pillow
 pdf2image
-google-generativeai
+google-genai
