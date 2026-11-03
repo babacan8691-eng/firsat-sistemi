@@ -94,7 +94,7 @@ with tab1:
                 {sozlesme_data}
                 
                 Görevin: Faturadaki verileri çıkar, sözleşme ile karşılaştır ve farkları bul.
-                Çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir metin yazma:
+                Çıktıyı SADECE aşağıdaki formatta geçerli bir JSON olarak ver. Başka hiçbir metin yazma (markdown kullanma):
                 {{
                     "Belge_Turu": "Lojistik" veya "Gecersiz",
                     "Fatura_No": "Faturadaki numara",
@@ -116,8 +116,13 @@ with tab1:
                 response = None
                 last_error = ""
                 
-                # GÜNCEL VE DESTEKLENEN MODELLER (404 hatasını önlemek için)
-                models_to_try = ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-flash']
+                # HATA MESAJINDAKİ ÖNERİLERE GÖRE GÜNCELLENMİŞ MODEL LİSTESİ
+                # Google'ın artık yeni kullanıcılara kapattığı modeller (2.5, 1.5 vb.) çıkarıldı.
+                models_to_try = [
+                    'gemini-3.8-flash',         # Hata mesajında önerilen en güncel model
+                    'gemini-3.1-pro-preview',   # Yedek model
+                    'gemini-3.5-flash'          # Alternatif yedek model
+                ]
                 
                 for model_name in models_to_try:
                     try:
@@ -129,21 +134,26 @@ with tab1:
                             ]
                         )
                         if response and response.text:
-                            break
+                            break # Başarılı olursa döngüden çık
                     except Exception as e:
                         last_error = str(e)
+                        # Eğer model bulunamadıysa (404) sıradaki modeli dene
                         if "404" in last_error or "NOT_FOUND" in last_error:
                             continue
-                        elif "503" in last_error or "429" in last_error: 
+                        # Hız limiti veya sunucu yoğunluğu (429/503) ise bekle ve tekrar dene
+                        elif "429" in last_error or "503" in last_error: 
                             time.sleep(2)
                             continue
                         else: 
+                            # API Key hatası vs. ise direkt döngüyü kır
                             st.error(f"Kritik API Hatası ({model_name}): {last_error}")
                             break
 
+                # Sistem yanıt veremezse hatayı göster
                 if not response or not response.text:
-                    st.error(f"Sistem yanıt üretemedi. Son Hata: {last_error}")
+                    st.error(f"Sistem yanıt üretemedi. Lütfen API anahtarınızı kontrol edin. (Son Hata: {last_error})")
                 else:
+                    # JSON formatını temizle
                     clean_json = re.sub(r'^```json\s*|\s*```$', '', response.text.strip(), flags=re.MULTILINE)
                     try:
                         data = json.loads(clean_json)
@@ -196,7 +206,7 @@ with tab1:
                                     st.success(f"✅ {data.get('Aciklama')}")
                                     
                     except json.JSONDecodeError:
-                        st.error("Yapay zeka geçerli bir JSON formatı üretemedi.")
+                        st.error("Yapay zeka geçerli bir JSON formatı üretemedi. Lütfen tekrar deneyin.")
                         with st.expander("Ham Yanıtı Gör"):
                             st.write(response.text)
 
