@@ -1,36 +1,33 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import requests
 import time
 
-# Sayfa Ayarları (Geniş Ekran)
+# Sayfa Ayarları
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 
-# Başlık ve Açıklama
 st.title("♿ Erişilebilirlik Denetim ve Müşteri Yönetim Paneli")
-st.markdown("Web sitelerinin engelli erişilebilirliğini denetleyin, raporlayın ve aylık gelirinizi yönetin.")
+st.markdown("Web sitelerinin engelli erişilebilirliğini **gerçek Google API'si** ile denetleyin, raporlayın ve aylık gelirinizi yönetin.")
 
-# --- VERİ TABANI BAŞLANGICI (Örnek Veriler) ---
+# --- VERİ TABANI (Kalıcı Hafıza) ---
 if 'musteri_df' not in st.session_state:
-    # Sistem boş görünmesin diye örnek (demo) veriler ekliyoruz
     ornek_veri = {
-        "Müşteri Adı": ["Örnek Tekstil A.Ş.", "Moda E-Ticaret", "Yerel Market Zinciri"],
-        "Web Sitesi": ["www.ornektekstil.com", "www.modaeticaret.com", "www.yerelmarket.com"],
-        "Hata Sayısı": [14, 8, 22],
-        "Aylık Ücret (TL)": [1500.0, 2000.0, 1200.0]
+        "Müşteri Adı": ["Örnek Tekstil A.Ş.", "Moda E-Ticaret"],
+        "Web Sitesi": ["www.ornektekstil.com", "www.modaeticaret.com"],
+        "Hata Sayısı": [14, 8],
+        "Aylık Ücret (TL)": [1500.0, 2000.0]
     }
     st.session_state.musteri_df = pd.DataFrame(ornek_veri)
 
 df = st.session_state.musteri_df
 
-# --- SEKMELER (TABS) ---
-tab1, tab2, tab3 = st.tabs(["📊 Genel Bakış (Dashboard)", "👥 Müşteri Yönetimi", "🔍 Otomatik Site Tarayıcı"])
+# --- SEKMELER ---
+tab1, tab2, tab3 = st.tabs(["📊 Genel Bakış", "👥 Müşteri Yönetimi", "🔍 Gerçek Site Tarayıcı"])
 
 # 1. SEKME: GENEL BAKIŞ
 with tab1:
     st.header("Sistem Özeti")
     
-    # İstatistikler (KPI)
     col1, col2, col3, col4 = st.columns(4)
     toplam_gelir = df["Aylık Ücret (TL)"].sum()
     toplam_musteri = len(df)
@@ -44,7 +41,6 @@ with tab1:
     
     st.divider()
     
-    # Grafikler
     col_g1, col_g2 = st.columns(2)
     with col_g1:
         st.subheader("Müşterilere Göre Gelir Dağılımı")
@@ -57,7 +53,6 @@ with tab1:
 with tab2:
     st.header("Müşteri ve Denetim Kayıtları")
     
-    # Yeni Müşteri Ekleme Formu
     with st.expander("➕ Yeni Müşteri / Denetim Ekle", expanded=False):
         with st.form("ekleme_formu", clear_on_submit=True):
             col_f1, col_f2 = st.columns(2)
@@ -85,40 +80,55 @@ with tab2:
                     time.sleep(1)
                     st.rerun()
 
-    # Mevcut Müşteriler Tablosu
     st.subheader("Kayıtlı Müşteriler")
     st.dataframe(df, use_container_width=True)
-    
-    # Tabloyu indirme butonu
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Müşteri Listesini CSV olarak İndir",
-        data=csv,
-        file_name='musteri_listesi.csv',
-        mime='text/csv',
-    )
 
-# 3. SEKME: OTOMATİK TARAYICI
+# 3. SEKME: GERÇEK TARAYICI (GOOGLE API)
 with tab3:
-    st.header("Hızlı Erişilebilirlik Tarayıcı (Potansiyel Müşteri Bulucu)")
-    st.write("Bu araç, hedeflediğiniz bir sitenin erişilebilirlik durumunu simüle eder ve size potansiyel bir teklif sunar.")
+    st.header("Gerçek Erişilebilirlik Tarayıcı")
+    st.write("Aşağıya bir site linki girin. Sistem **Google PageSpeed API**'sini kullanarak siteyi canlı olarak tarayacak ve erişilebilirlik skorunu getirecektir.")
     
     with st.form("tarama_formu"):
-        hedef_url = st.text_input("Denetlemek istediğiniz site linkini girin (Örn: www.hedefsite.com)")
-        tara_butonu = st.form_submit_button("Siteyi Tara")
+        hedef_url = st.text_input("Denetlemek istediğiniz site linkini girin (Örn: trendyol.com)")
+        tara_butonu = st.form_submit_button("Gerçek Taramayı Başlat")
         
         if tara_butonu and hedef_url:
-            with st.spinner(f"{hedef_url} taranıyor... Lütfen bekleyin..."):
-                time.sleep(2) # Gerçekçi bir bekleme süresi
+            # URL formatını düzelt
+            if not hedef_url.startswith("http"):
+                hedef_url = "https://" + hedef_url
                 
-                # Simüle edilmiş tarama sonuçları (Gerçekte burada WAVE API'si çağrılır)
-                hata = np.random.randint(5, 35)
-                tahmini_kayip = hata * 500 # Her hatanın aylık 500 TL kayba yol açtığını varsayalım
-                
-                st.success("Tarama tamamlandı!")
-                
-                col_r1, col_r2 = st.columns(2)
-                col_r1.error(f"Bulunan Erişilebilirlik Hatası: **{hata}**")
-                col_r2.warning(f"Tahmini Aylık Müşteri Kaybı: **{tahmini_kayip:,.2f} TL**")
-                
-                st.info(f"💡 **Satış Taktiki:** Bu siteye 'Sitenizde engelli müşterilerin alışveriş yapmasını engelleyen {hata} hata buldum. Aylık {tahmini_kayip} TL kaybediyorsunuz. Bu hataları çözmek için aylık 1.500 TL'lik bakım paketimiz var' diyebilirsiniz.")
+            with st.spinner(f"{hedef_url} taranıyor... Google API'sinden veri bekleniyor (Bu işlem 10-20 saniye sürebilir)..."):
+                try:
+                    # Google PageSpeed Insights API (Erişilebilirlik Kategorisi)
+                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility"
+                    response = requests.get(api_url)
+                    data = response.json()
+                    
+                    if 'lighthouseResult' in data:
+                        # Skoru al (0-1 arası gelir, 100 ile çarpıyoruz)
+                        score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
+                        
+                        # Başarısız olan (Hata veren) testleri bul
+                        audits = data['lighthouseResult']['audits']
+                        failures = [details['title'] for audit, details in audits.items() if details.get('score') == 0]
+                        hata_sayisi = len(failures)
+                        
+                        st.success("Tarama Tamamlandı! (Gerçek Veri)")
+                        
+                        col_r1, col_r2 = st.columns(2)
+                        col_r1.metric(label="Erişilebilirlik Skoru", value=f"{score:.0f} / 100")
+                        col_r2.metric(label="Bulunan Kritik Hata", value=hata_sayisi)
+                        
+                        if hata_sayisi > 0:
+                            st.warning("Bulunan başlıca hatalar:")
+                            for hata in failures[:10]: # İlk 10 hatayı göster
+                                st.write(f"- {hata}")
+                                
+                            st.info(f"💡 **Satış Taktiki:** Bu siteye 'Sitenizde engelli müşterilerin alışveriş yapmasını engelleyen {hata_sayisi} kritik hata buldum. Erişilebilirlik skorunuz 100 üzerinden {score:.0f}. Bu hataları çözmek için aylık bakım paketimiz var' diyebilirsiniz.")
+                        else:
+                            st.success("Harika! Bu sitede kritik bir erişilebilirlik hatası bulunamadı.")
+                    else:
+                        st.error("Google API'sinden veri alınamadı. Girdiğiniz sitenin açık ve doğru olduğundan emin olun.")
+                        
+                except Exception as e:
+                    st.error(f"Bir hata oluştu: {e}")
