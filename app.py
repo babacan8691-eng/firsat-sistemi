@@ -6,7 +6,6 @@ import re
 from bs4 import BeautifulSoup
 from serpapi import GoogleSearch
 
-# Sayfa Ayarları
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 st.title("♿ Erişilebilirlik Denetim ve Müşteri Yönetim Paneli")
 st.markdown("Web sitelerinin engelli erişilebilirliğini **gerçek Google API'si** ile denetleyin, raporlayın ve aylık gelirinizi yönetin.")
@@ -16,12 +15,15 @@ if 'musteri_df' not in st.session_state:
     st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
 df = st.session_state.musteri_df
 
-# --- SEKMELER (Hatanın çözümü buradaki tanımlamadır) ---
+if 'lead_results' not in st.session_state:
+    st.session_state.lead_results = []
+
+# --- SEKMELER ---
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Genel Bakış", 
     "👥 Müşteri Yönetimi", 
     "🔍 Gerçek Site Tarayıcı", 
-    "🤖 Müşteri Bulucu"
+    "🤖 Otomatik Müşteri Bulucu"
 ])
 
 # 1. SEKME: GENEL BAKIŞ
@@ -66,7 +68,7 @@ with tab2:
                     "Müşteri Adı": [musteri_adi], "Web Sitesi": [web_sitesi],
                     "Hata Sayısı": [hata_sayisi], "Aylık Ücret (TL)": [ucret]
                 })
-                st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni_kayit], ignore_index=True)
+                st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, kayit], ignore_index=True)
                 st.success(f"{musteri_adi} eklendi!")
                 time.sleep(1)
                 st.rerun()
@@ -113,84 +115,144 @@ with tab3:
                 except Exception as e:
                     st.error("Zaman aşımı veya bağlantı hatası.")
 
-# 4. SEKME: MÜŞTERİ BULUCU (SERPAPI + EMAIL FINDER MCP)
+# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU VE TOPLU TARAMA
 with tab4:
-    st.header("🤖 Müşteri Bulucu: SerpApi + Email Finder")
-    st.write("SerpApi ile hedef sektördeki şirketleri bulun, **Email Finder MCP** API'si ile e-postalarını otomatik çekin.")
+    st.header("🤖 Otomatik Toplu Tarama ve Müşteri Bulucu")
+    st.write("Sistem, belirlenen sektörleri sırayla arar, bulduğu siteleri **Google API ile denetler** ve e-postalarını toplar. İşlem sonunda **en çok hatası olan** siteleri listeler.")
     
-    # Form bloğu (Girişler ve Buton)
-    with st.form("lead_gen_form"):
-        col_s1, col_s2 = st.columns(2)
-        sektor = col_s1.text_input("Hedef Sektör (Örn: butik, klinik)", placeholder="butik")
-        sehir = col_s2.text_input("Şehir (İsteğe Bağlı)", placeholder="İstanbul")
-        lead_sayisi = st.slider("Kaç adet şirket bulunsun?", 3, 10, 5)
-        ara_butonu = st.form_submit_button("Şirketleri ve E-postaları Bul")
+    with st.form("toplu_tarama_formu"):
+        st.subheader("Hedef Sektörleri Belirleyin (Virgülle Ayırın)")
+        sektorler_input = st.text_input("Sektörler", value="butik, klinik, emlak")
+        sehir_input = st.text_input("Şehir", value="İstanbul")
+        lead_sayisi = st.slider("Her sektör için kaç site taransın?", 2, 5, 3)
         
-        if ara_butonu and sektor:
-            with st.spinner("Arama yapılıyor ve e-postalar keşfediliyor..."):
-                leads = []
+        st.warning("⚠️ Not: Google API tarama süreleri uzun olabileceği için toplu tarama birkaç dakika sürebilir. Lütfen sayfayı yenilemeyin.")
+        baslat_butonu = st.form_submit_button("🚀 Toplu Taramayı Başlat")
+        
+        if baslat_butonu:
+            sektorler = [s.strip() for s in sektorler_input.split(",")]
+            islenen_siteler = []
+            
+            # İlerleme çubuğu
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            toplam_islem = len(sektorler) * lead_sayisi
+            islem_sayaci = 0
+            
+            for sektor in sektorler:
+                status_text.text(f"🔍 '{sektor}' sektörü aranıyor...")
+                
+                # SERPAPI ARAMASI
+                query = f'"{sektor}" "{sehir_input}"'
+                params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": lead_sayisi * 2, "gl": "tr", "hl": "tr"}
+                
                 try:
-                    # 1. AŞAMA: SERPAPI
-                    query = f'"{sektor}" "{sehir}"'
-                    params = {
-                      "engine": "google", "q": query,
-                      "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c",
-                      "num": lead_sayisi * 2, "gl": "tr", "hl": "tr"
-                    }
                     search = GoogleSearch(params)
                     results = search.get_dict()
                     
                     if "organic_results" in results:
+                        site_sayaci = 0
                         for res in results["organic_results"]:
-                            if len(leads) >= lead_sayisi: break
-                            site_url = res.get("link", "")
-                            site_title = res.get("title", "İsimsiz Şirket")
+                            if site_sayaci >= lead_sayisi: break
                             
-                            # Gereksiz linkleri atla
-                            if "google.com/goto" in site_url or "mailerlite.com" in site_url or "wixsite.com" in site_url or "facebook.com" in site_url:
-                                continue
+                            site_url = res.get("link", "")
+                            if any(x in site_url for x in ["google.com/goto", "facebook.com", "mailerlite.com"]): continue
                             
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', site_url)
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            # 2. AŞAMA: EMAIL FINDER MCP API
-                            api_url = "https://startuphub-validator-service.onrender.com/api/discover-email"
-                            payload = {"firstName": "Owner", "lastName": "Founder", "domain": domain}
+                            status_text.text(f"🕵️ {domain} inceleniyor...")
                             
+                            # 1. GOOGLE PAGESPEED API İLE HATA SAYISINI BUL
+                            hata_sayisi = 0
                             try:
-                                response = requests.post(api_url, json=payload, timeout=20)
-                                if response.status_code == 200:
-                                    data = response.json()
-                                    if data.get("success") and data.get("email"):
-                                        leads.append({"Şirket": site_title, "Domain": domain, "E-posta": data.get("email"), "Kaynak URL": site_url})
-                                    else:
-                                        leads.append({"Şirket": site_title, "Domain": domain, "E-posta": "Bulunamadı", "Kaynak URL": site_url})
-                                else:
-                                    leads.append({"Şirket": site_title, "Domain": domain, "E-posta": "API Hatası", "Kaynak URL": site_url})
+                                api_key = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
+                                api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key={api_key}&strategy=desktop"
+                                r = requests.get(api_url, timeout=30) # Hızlı geçmek için timeout 30 sn
+                                if r.status_code == 200:
+                                    data = r.json()
+                                    if 'lighthouseResult' in data:
+                                        audits = data['lighthouseResult']['audits']
+                                        hata_sayisi = len([d for a, d in audits.items() if d.get('score') == 0])
                             except:
-                                leads.append({"Şirket": site_title, "Domain": domain, "E-posta": "Bağlantı Hatası", "Kaynak URL": site_url})
+                                pass # API hata verirse geç
                             
-                            time.sleep(1)
+                            # 2. EMAIL FINDER MCP İLE E-POSTA BUL
+                            email = "Bulunamadı"
+                            try:
+                                ef_url = "https://startuphub-validator-service.onrender.com/api/discover-email"
+                                payload = {"firstName": "Owner", "lastName": "Founder", "domain": domain}
+                                ef_resp = requests.post(ef_url, json=payload, timeout=15)
+                                if ef_resp.status_code == 200:
+                                    ef_data = ef_resp.json()
+                                    if ef_data.get("email"):
+                                        email = ef_data.get("email")
+                            except:
+                                pass
+                                
+                            # 3. DURUM ETİKETİ
+                            durum = "Soğuk"
+                            if hata_sayisi >= 10 and email != "Bulunamadı":
+                                durum = "🔥 Sıcak (Hemen Ara)"
+                            elif email != "Bulunamadı":
+                                durum = "Ilık (E-posta Var)"
+                                
+                            islenen_siteler.append({
+                                "Sektör": sektor,
+                                "Şirket": res.get("title", domain)[:30] + "...",
+                                "Domain": domain,
+                                "Hata Sayısı": hata_sayisi,
+                                "E-posta": email,
+                                "Durum": durum
+                            })
                             
-                        # Sonuçları geçici hafızaya al (Buton form dışına taşınabilsin diye)
-                        st.session_state.lead_results = leads
+                            site_sayaci += 1
+                            islem_sayaci += 1
+                            progress_bar.progress(islem_sayaci / toplam_islem)
+                            
+                            time.sleep(1) # API limitlerini aşmamak için bekle
                     else:
-                        st.warning("Sonuç bulunamadı.")
+                        islem_sayaci += lead_sayisi # Sonuç çıkmazsa işlemciyi artır
                 except Exception as e:
-                    st.error(f"Hata: {e}")
+                    pass
+                    
+            status_text.text("✅ Tüm taramalar tamamlandı!")
+            time.sleep(1)
+            
+            # Sonuçları hafızaya kaydet ve sırala
+            if islenen_siteler:
+                df_results = pd.DataFrame(islenen_siteler)
+                # Soruna (Hata sayısına) göre büyükten küçüğe sırala
+                df_results = df_results.sort_values(by="Hata Sayısı", ascending=False).reset_index(drop=True)
+                st.session_state.lead_results = df_results
+            else:
+                st.warning("Hiçbir sonuç bulunamadı.")
 
-    # Formun DIŞINDA: Sonuçları göster ve indirme butonu ekle
-    if 'lead_results' in st.session_state and st.session_state.lead_results:
-        sonuc_df = pd.DataFrame(st.session_state.lead_results)
-        st.success(f"{len(sonuc_df)} şirket işlendi:")
-        st.dataframe(sonuc_df, use_container_width=True)
+    # --- SONUÇLARI GÖSTERME KISMI (FORMUN DIŞINDA) ---
+    if not st.session_state.lead_results.empty:
+        st.divider()
+        st.subheader("📊 Tarama Sonuçları (En Sorunludan En Az Sorunluya)")
         
-        csv = sonuc_df.to_csv(index=False).encode('utf-8')
-        # İndirme butonu artık güvenli bir şekilde formun dışında
-        st.download_button(
-            label="📥 Sonuçları CSV Olarak İndir",
-            data=csv,
-            file_name='musteri_adaylari.csv',
-            mime='text/csv',
-        )
+        # Filtreleme Seçeneği
+        sadece_sicak = st.checkbox("🔥 Sadece 'Ödemeye Hazır' (Sıcak) Müşterileri Göster")
+        
+        gosterilecek_df = st.session_state.lead_results
+        if sadece_sicak:
+            gosterilecek_df = gosterilecek_df[gosterilecek_df["Durum"] == "🔥 Sıcak (Hemen Ara)"]
+            
+        if gosterilecek_df.empty:
+            st.info("Seçilen kriterlere uygun müşteri bulunamadı. Filtreyi kaldırıp tekrar bakın.")
+        else:
+            st.dataframe(gosterilecek_df, use_container_width=True)
+            
+            # İndirme Butonu
+            csv = gosterilecek_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Bu Listeyi CSV Olarak İndir",
+                data=csv,
+                file_name='sicak_musteri_adaylari.csv',
+                mime='text/csv',
+            )
+            st.info("💡 **Taktik:** '🔥 Sıcak' etiketli olanlara hemen e-posta atın. Hata sayısı yüksek olduğu için yasal riskleri çok fazla, bu yüzden 'Sitenizde 15 hata buldum' demek onları ikna edecektir.")
