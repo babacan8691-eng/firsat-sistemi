@@ -86,27 +86,29 @@ with tab2:
 # 3. SEKME: GERÇEK TARAYICI (GOOGLE API)
 with tab3:
     st.header("Gerçek Erişilebilirlik Tarayıcı")
-    st.write("Aşağıya bir site linki girin. Sistem **Google PageSpeed API**'sini kullanarak siteyi canlı olarak tarayacak ve erişilebilirlik skorunu getirecektir.")
+    st.write("Aşağıya bir site linki girin. Sistem **Google PageSpeed API**'sini kullanarak siteyi canlı olarak tarayacak ve erişilebilirlik skorunu getirecektir. (Büyük sitelerde tarama 1-2 dakika sürebilir, lütfen bekleyin).")
     
     with st.form("tarama_formu"):
-        hedef_url = st.text_input("Denetlemek istediğiniz site linkini girin (Örn: trendyol.com)")
+        hedef_url = st.text_input("Denetlemek istediğiniz site linkini girin (Örn: trendyol.com, example.com)")
         tara_butonu = st.form_submit_button("Gerçek Taramayı Başlat")
         
         if tara_butonu and hedef_url:
             if not hedef_url.startswith("http"):
                 hedef_url = "https://" + hedef_url
                 
-            with st.spinner(f"{hedef_url} taranıyor... Google API'sinden veri bekleniyor (Bu işlem 10-20 saniye sürebilir)..."):
+            with st.spinner(f"{hedef_url} taranıyor... Google sunucularından yanıt bekleniyor (Bu işlem büyük sitelerde 1-2 dakika sürebilir)..."):
                 try:
-                    # API Anahtarınız koda entegre edildi
+                    # Sizin API Anahtarınız
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                     
-                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
+                    # strategy=desktop ekleyerek daha hızlı sonuç almayı sağlıyoruz
+                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}&strategy=desktop"
                     
-                    response = requests.get(api_url, timeout=20)
+                    # Zaman aşımını 120 saniyeye çıkardık
+                    response = requests.get(api_url, timeout=120)
                     
                     if response.status_code != 200:
-                        st.error(f"Google API Hatası: {response.status_code}. Lütfen anahtarın doğruluğundan emin olun veya siteyi kontrol edin.")
+                        st.error(f"Google API Hatası: {response.status_code}. Site çok büyük olabilir veya API kotanız dolmuş olabilir.")
                     else:
                         data = response.json()
                         
@@ -133,9 +135,9 @@ with tab3:
                             else:
                                 st.success("Harika! Bu sitede kritik bir erişilebilirlik hatası bulunamadı.")
                         else:
-                            st.error("API yanıtı beklenen formatta değil. Site geçerli bir URL mi?")
+                            st.error("API yanıtı beklenen formatta değil. Lütfen site adresini kontrol edin.")
                             
                 except requests.exceptions.Timeout:
-                    st.error("İstek zaman aşımına uğradı. Site çok yavaş yanıt veriyor olabilir, lütfen tekrar deneyin.")
+                    st.error("Zaman aşımı! Site çok yavaş yanıt veriyor veya Google tarafından engellenmiş olabilir. Lütfen daha küçük bir site (örneğin bir blog) ile test edin.")
                 except Exception as e:
                     st.error(f"Beklenmeyen bir hata oluştu: {e}")
