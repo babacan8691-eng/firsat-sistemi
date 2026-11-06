@@ -15,8 +15,9 @@ if 'musteri_df' not in st.session_state:
     st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
 df = st.session_state.musteri_df
 
+# HATA BURADAYDI: Boş liste [] yerine, boş tablo pd.DataFrame() ile başlatıyoruz
 if 'lead_results' not in st.session_state:
-    st.session_state.lead_results = []
+    st.session_state.lead_results = pd.DataFrame()
 
 # --- SEKMELER ---
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -68,7 +69,7 @@ with tab2:
                     "Müşteri Adı": [musteri_adi], "Web Sitesi": [web_sitesi],
                     "Hata Sayısı": [hata_sayisi], "Aylık Ücret (TL)": [ucret]
                 })
-                st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, kayit], ignore_index=True)
+                st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni_kayit], ignore_index=True)
                 st.success(f"{musteri_adi} eklendi!")
                 time.sleep(1)
                 st.rerun()
