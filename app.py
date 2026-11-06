@@ -91,29 +91,46 @@ with tab3:
 # 4. SEKME: OTOMATİK MÜŞTERİ BULUCU
 with tab4:
     st.header("🤖 Otomatik Toplu Tarama")
+    st.info("💡 İpucu: Şehir kısmını mutlaka doldurun. Sektör kısmına sadece tek bir kelime yazın (Örn: butik, klinik, mobilya).")
+    
     with st.form("toplu_tarama"):
-        sektorler = st.text_input("Sektörler (virgülle)", "butik, klinik").split(",")
-        sehir = st.text_input("Şehir", "İstanbul")
-        limit = st.slider("Her sektör için kaç site?", 1, 5, 2)
+        sektorler = st.text_input("Sektörler (virgülle ayırın)", "butik, giyim").split(",")
+        sehir = st.text_input("Şehir (Zorunlu)", "İstanbul")
+        limit = st.slider("Her sektör için kaç site?", 1, 5, 3)
         
         if st.form_submit_button("Toplu Tara"):
-            kara_liste = ["yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", "iett", "doktorum360"]
+            # Kara Liste: Rehber siteleri, platformlar ve dev e-ticaret siteleri engellendi
+            kara_liste = [
+                "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", 
+                "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", 
+                "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp"
+            ]
             leads = []
             prog = st.progress(0)
             
             for idx, sek in enumerate(sektorler):
                 sek = sek.strip()
-                query = f'"{sek}" "{sehir}" iletişim'
-                params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 15, "gl": "tr"}
+                if not sek: continue
+                
+                # Arama sorgusu: Sadece .com.tr uzantılı gerçek siteleri bulmaya çalış
+                query = f'"{sek}" "{sehir}" iletişim site:.com.tr'
+                params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 20, "gl": "tr"}
+                
                 try:
                     res = GoogleSearch(params).get_dict().get("organic_results", [])
                     count = 0
                     for r in res:
                         if count >= limit: break
                         url = r.get("link", "")
-                        if any(x in url for x in kara_liste): continue
-                        domain = re.search(r'https?://(?:www\.)?([^/]+)', url).group(1)
                         
+                        # Kara listedekileri atla
+                        if any(x in url for x in kara_liste): continue
+                        
+                        domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+                        if not domain_match: continue
+                        domain = domain_match.group(1)
+                        
+                        # Hata sayısını çek
                         hata = 0
                         try:
                             api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
@@ -134,7 +151,9 @@ with tab4:
             
             if leads:
                 st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
-                st.success(f"{len(leads)} site bulundu ve e-postaları tahmin edildi!")
+                st.success(f"{len(leads)} gerçek site bulundu ve e-postaları tahmin edildi!")
+            else:
+                st.warning("Kara listeye takılmayan uygun bir site bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
 
     if not st.session_state.lead_results.empty:
         st.dataframe(st.session_state.lead_results, use_container_width=True)
