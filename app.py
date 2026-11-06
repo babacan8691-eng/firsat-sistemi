@@ -96,7 +96,7 @@ with tab4:
     hedef_sektorler = ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat"]
     
     with st.form("otomatik_avci"):
-        sehir_input = st.selectbox("Hangi Şehirde Aransın? (Tüm Türkiye yerine tek şehir seçmek daha iyi sonuç verir)", ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
+        sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
         
         st.info(f"Sistem taranacak sektörleri otomatik seçecek: {', '.join(hedef_sektorler)}")
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
@@ -105,15 +105,17 @@ with tab4:
             # Arama yapılacak şehir ayarı
             arama_sehir = sehir_input
             
-            # GÜÇLENDİRİLMİŞ KARA LİSTE (Rehber, forum, platform ve dev siteler)
+            # GÜÇLENDİRİLMİŞ KARA LİSTE
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", 
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", 
                 "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
                 "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
-                "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur"
+                "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr"
             ]
+            
             leads = []
+            seen_domains = set() # Aynı siteyi tekrar eklememek için hafıza
             
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -132,12 +134,20 @@ with tab4:
                     for r in res:
                         if count >= limit: break
                         url = r.get("link", "")
+                        title = r.get("title", "").lower()
                         
+                        # Kara liste (URL kontrolü)
                         if any(x in url for x in kara_liste): continue
+                        
+                        # Başlık kontrolü: Eğer başlıkta bu kelimeler varsa rehber sitesidir, atla
+                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları"]): continue
                         
                         domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                         if not domain_match: continue
                         domain = domain_match.group(1)
+                        
+                        # Eğer bu domain daha önce listeye eklendiyse atla
+                        if domain in seen_domains: continue
                         
                         # Google API ile hata sayısını ölç
                         hata = 0
@@ -148,7 +158,7 @@ with tab4:
                                 hata = len([d for a, d in rr.json()['lighthouseResult']['audits'].items() if d.get('score') == 0])
                         except: pass
                         
-                        # HATA 2'DEN AZ İSE ÇÖPE AT (Çok temiz siteye satış zordur)
+                        # HATA 2'DEN AZ İSE ÇÖPE AT
                         if hata < 2: continue
                             
                         mail = f"info@{domain}"
@@ -161,6 +171,8 @@ with tab4:
                             "E-posta": mail,
                             "Durum": "🔥 Sıcak (Hemen Ara)" if hata >= 8 else "Ilık (E-posta At)"
                         })
+                        
+                        seen_domains.add(domain) # Bulunan siteyi hafızaya kaydet
                         count += 1
                 except: pass
                 progress_bar.progress((idx + 1) / len(hedef_sektorler))
