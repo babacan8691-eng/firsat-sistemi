@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import re
+from bs4 import BeautifulSoup
+from serpapi import GoogleSearch
 
 # Sayfa Ayarları
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
@@ -22,7 +25,7 @@ if 'musteri_df' not in st.session_state:
 df = st.session_state.musteri_df
 
 # --- SEKMELER ---
-tab1, tab2, tab3 = st.tabs(["📊 Genel Bakış", "👥 Müşteri Yönetimi", "🔍 Gerçek Site Tarayıcı"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Genel Bakış", "👥 Müşteri Yönetimi", "🔍 Gerçek Site Tarayıcı", "🤖 Otomatik Müşteri Bulucu"])
 
 # 1. SEKME: GENEL BAKIŞ
 with tab1:
@@ -86,7 +89,7 @@ with tab2:
 # 3. SEKME: GERÇEK TARAYICI (GOOGLE API)
 with tab3:
     st.header("Gerçek Erişilebilirlik Tarayıcı")
-    st.write("Aşağıya bir site linki girin. Sistem **Google PageSpeed API**'sini kullanarak siteyi canlı olarak tarayacak ve erişilebilirlik skorunu getirecektir. (Büyük sitelerde tarama 1-2 dakika sürebilir, lütfen bekleyin).")
+    st.write("Aşağıya bir site linki girin. Sistem **Google PageSpeed API**'sini kullanarak siteyi canlı olarak tarayacak ve erişilebilirlik skorunu getirecektir.")
     
     with st.form("tarama_formu"):
         hedef_url = st.text_input("Denetlemek istediğiniz site linkini girin (Örn: trendyol.com, example.com)")
@@ -96,15 +99,11 @@ with tab3:
             if not hedef_url.startswith("http"):
                 hedef_url = "https://" + hedef_url
                 
-            with st.spinner(f"{hedef_url} taranıyor... Google sunucularından yanıt bekleniyor (Bu işlem büyük sitelerde 1-2 dakika sürebilir)..."):
+            with st.spinner(f"{hedef_url} taranıyor... Google sunucularından yanıt bekleniyor..."):
                 try:
-                    # Sizin API Anahtarınız
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                    
-                    # strategy=desktop ekleyerek daha hızlı sonuç almayı sağlıyoruz
                     api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}&strategy=desktop"
                     
-                    # Zaman aşımını 120 saniyeye çıkardık
                     response = requests.get(api_url, timeout=120)
                     
                     if response.status_code != 200:
@@ -115,8 +114,6 @@ with tab3:
                         if 'lighthouseResult' in data:
                             score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
                             audits = data['lighthouseResult']['audits']
-                            
-                            # Skoru 0 olan (yani hata veren) testleri filtrele
                             failures = [details['title'] for audit, details in audits.items() if details.get('score') == 0]
                             hata_sayisi = len(failures)
                             
@@ -130,7 +127,6 @@ with tab3:
                                 st.warning("Bulunan başlıca hatalar:")
                                 for hata in failures[:10]:
                                     st.write(f"- {hata}")
-                                    
                                 st.info(f"💡 **Satış Taktiki:** Bu siteye 'Sitenizde engelli müşterilerin alışveriş yapmasını engelleyen {hata_sayisi} kritik hata buldum. Erişilebilirlik skorunuz 100 üzerinden {score:.0f}. Bu hataları çözmek için aylık bakım paketimiz var' diyebilirsiniz.")
                             else:
                                 st.success("Harika! Bu sitede kritik bir erişilebilirlik hatası bulunamadı.")
@@ -141,3 +137,69 @@ with tab3:
                     st.error("Zaman aşımı! Site çok yavaş yanıt veriyor veya Google tarafından engellenmiş olabilir. Lütfen daha küçük bir site (örneğin bir blog) ile test edin.")
                 except Exception as e:
                     st.error(f"Beklenmeyen bir hata oluştu: {e}")
+
+# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU (SERPAPI)
+with tab4:
+    st.header("🤖 Otomatik Müşteri Bulucu")
+    st.write("Hedeflediğiniz sektörü yazın. Sistem Google üzerinden arama yapacak, bulduğu siteleri ziyaret edecek ve iletişim e-postalarını toplayacaktır.")
+    
+    with st.form("lead_gen_form"):
+        col_s1, col_s2 = st.columns(2)
+        sektor = col_s1.text_input("Hedef Sektör (Örn: butik, mobilya, klinik)")
+        sehir = col_s2.text_input("Şehir (İsteğe Bağlı, Örn: İstanbul)")
+        
+        lead_sayisi = st.slider("Kaç adet site taranıp e-posta aransın?", 5, 20, 10)
+        ara_butonu = st.form_submit_button("Potansiyel Müşterileri Bul")
+        
+        if ara_butonu and sektor:
+            with st.spinner("Google'da arama yapılıyor ve sitelerin e-postaları toplanıyor... Lütfen bekleyin..."):
+                try:
+                    SERP_API_KEY = "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c"
+                    query = f"{sektor} {sehir} iletişim email"
+                    
+                    params = {
+                      "engine": "google",
+                      "q": query,
+                      "api_key": SERP_API_KEY,
+                      "num": lead_sayisi
+                    }
+                    
+                    search = GoogleSearch(params)
+                    results = search.get_dict()
+                    
+                    leads = []
+                    if "organic_results" in results:
+                        for res in results["organic_results"]:
+                            site_url = res.get("link")
+                            site_title = res.get("title")
+                            
+                            email = "Bulunamadı"
+                            try:
+                                # Siteyi ziyaret et (5 saniye zaman aşımı)
+                                site_response = requests.get(site_url, timeout=5, headers={'User-Agent': 'Mozilla/5.0'})
+                                soup = BeautifulSoup(site_response.text, 'html.parser')
+                                
+                                # Önce mailto linklerini ara
+                                mailto_links = soup.select('a[href^="mailto:"]')
+                                if mailto_links:
+                                    email = mailto_links[0]['href'].replace('mailto:', '').split('?')[0]
+                                else:
+                                    # Bulunamazsa metin içinde regex ile ara
+                                    text = soup.get_text()
+                                    emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+                                    if emails:
+                                        email = emails[0]
+                            except Exception:
+                                pass 
+                            
+                            leads.append({"Site Adı": site_title, "URL": site_url, "E-posta": email})
+                    
+                    if leads:
+                        st.success(f"{len(leads)} adet potansiyel müşteri bulundu!")
+                        st.dataframe(pd.DataFrame(leads), use_container_width=True)
+                        st.info("💡 **İpucu:** E-postası bulunan sitelere doğrudan ulaşabilirsiniz. E-postası bulunamayanların iletişim sayfasına manuel gitmeniz gerekebilir.")
+                    else:
+                        st.warning("Arama sonucu bulunamadı veya API kotanız dolmuş olabilir.")
+                        
+                except Exception as e:
+                    st.error(f"Bir hata oluştu: {e}")
