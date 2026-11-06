@@ -88,32 +88,43 @@ with tab3:
                         st.write(failures[:5])
                 except: st.error("Hata oluştu.")
 
-# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU
+# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU (TEK TIKLA AVCI)
 with tab4:
-    st.header("🤖 Otomatik Toplu Tarama")
-    st.info("💡 İpucu: Şehir kısmını mutlaka doldurun. Sektör kısmına sadece tek bir kelime yazın (Örn: butik, klinik, mobilya).")
+    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
+    st.write("Sistem, en çok kazandıran sektörleri **kendi kendine** arar, hatalı siteleri bulur ve e-postalarını toplar. Sadece şehri seçin ve başlatın.")
     
-    with st.form("toplu_tarama"):
-        sektorler = st.text_input("Sektörler (virgülle ayırın)", "butik, giyim").split(",")
-        sehir = st.text_input("Şehir (Zorunlu)", "İstanbul")
-        limit = st.slider("Her sektör için kaç site?", 1, 5, 3)
+    # Hazır Sektör Listesi (Sistem bunları sırayla tarayacak)
+    hedef_sektorler = ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat"]
+    
+    with st.form("otomatik_avci"):
+        sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya", "Tüm Türkiye"])
         
-        if st.form_submit_button("Toplu Tara"):
-            # Kara Liste: Rehber siteleri, platformlar ve dev e-ticaret siteleri engellendi
+        st.info(f"Sistem taranacak sektörleri otomatik seçecek: {', '.join(hedef_sektorler)}")
+        baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
+        
+        if baslat_butonu:
+            # Arama yapılacak şehir ayarı (Tüm Türkiye seçilirse boş bırak)
+            arama_sehir = "" if sehir_input == "Tüm Türkiye" else sehir_input
+            
+            # Kara Liste
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", 
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", 
-                "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp"
+                "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
+                "bulurum", "rehber", "firmalar", "katalog", "harita"
             ]
             leads = []
-            prog = st.progress(0)
             
-            for idx, sek in enumerate(sektorler):
-                sek = sek.strip()
-                if not sek: continue
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Her sektör için 3 site arayacak (Toplam 8*3 = 24 site)
+            limit = 3
+            
+            for idx, sek in enumerate(hedef_sektorler):
+                status_text.text(f"🔍 '{sek}' sektörü taranıyor... ({idx+1}/{len(hedef_sektorler)})")
                 
-                # Arama sorgusu: Sadece .com.tr uzantılı gerçek siteleri bulmaya çalış
-                query = f'"{sek}" "{sehir}" iletişim site:.com.tr'
+                query = f'"{sek}" "{arama_sehir}" site:.com.tr'
                 params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 20, "gl": "tr"}
                 
                 try:
@@ -123,14 +134,13 @@ with tab4:
                         if count >= limit: break
                         url = r.get("link", "")
                         
-                        # Kara listedekileri atla
                         if any(x in url for x in kara_liste): continue
                         
                         domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                         if not domain_match: continue
                         domain = domain_match.group(1)
                         
-                        # Hata sayısını çek
+                        # Google API ile hata sayısını ölç
                         hata = 0
                         try:
                             api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
@@ -139,21 +149,31 @@ with tab4:
                                 hata = len([d for a, d in rr.json()['lighthouseResult']['audits'].items() if d.get('score') == 0])
                         except: pass
                         
+                        # Hatasız siteyi çöpe at
+                        if hata == 0: continue
+                            
                         mail = f"info@{domain}"
                         
                         leads.append({
+                            "Sektör": sek,
                             "Şirket": r.get("title", domain)[:30],
-                            "Domain": domain, "Hata": hata, "E-posta": mail
+                            "Domain": domain, 
+                            "Hata": hata, 
+                            "E-posta": mail,
+                            "Durum": "🔥 Sıcak (Hemen Ara)" if hata >= 10 else "Ilık (E-posta At)"
                         })
                         count += 1
                 except: pass
-                prog.progress((idx+1)/len(sektorler))
+                progress_bar.progress((idx + 1) / len(hedef_sektorler))
+            
+            status_text.text("✅ Tarama tamamlandı!")
+            time.sleep(1)
             
             if leads:
                 st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
-                st.success(f"{len(leads)} gerçek site bulundu ve e-postaları tahmin edildi!")
+                st.success(f"Harika! Sistem arka planda çalıştı ve **{len(leads)}** adet hatası olan gerçek site buldu.")
             else:
-                st.warning("Kara listeye takılmayan uygun bir site bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
+                st.warning("Uygun site bulunamadı. Lütfen farklı bir şehir seçin.")
 
     if not st.session_state.lead_results.empty:
         st.dataframe(st.session_state.lead_results, use_container_width=True)
