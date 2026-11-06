@@ -14,6 +14,10 @@ from serpapi import GoogleSearch
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
 
+# --- KOD İÇİNE GÖMÜLÜ GMAIL BİLGİLERİ ---
+GMAIL_ADRESI = "babacan.8691@gmail.com"
+GMAIL_SIFRESI = "kuog wnba kcqu qgub"
+
 # --- VERİ TABANI ---
 if 'musteri_df' not in st.session_state:
     st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
@@ -110,7 +114,6 @@ with tab4:
                         if any(x in url for x in kara_liste): continue
                         domain = re.search(r'https?://(?:www\.)?([^/]+)', url).group(1)
                         
-                        # Google Hız Testi
                         hata = 0
                         try:
                             api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
@@ -119,7 +122,6 @@ with tab4:
                                 hata = len([d for a, d in rr.json()['lighthouseResult']['audits'].items() if d.get('score') == 0])
                         except: pass
                         
-                        # E-posta Tahmini
                         mail = f"info@{domain}"
                         
                         leads.append({
@@ -140,128 +142,115 @@ with tab4:
 # 5. SEKME: E-POSTA OTOMASYONU VE YANITLAR
 with tab5:
     st.header("📧 E-posta Gönderimi ve Gelen Kutusu Analizi")
+    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı olarak çalışmaya hazır.")
     
-    with st.expander("⚙️ Gmail Ayarları (Sadece 1 kez girin)", expanded=True):
-        gmail_adresi = st.text_input("Gmail Adresiniz", placeholder="ornek@gmail.com")
-        gmail_sifre = st.text_input("16 Haneli Uygulama Şifreniz", type="password", help="Google Hesabınız > Güvenlik > Uygulama Şifreleri'nden alın.")
+    col_gonder, col_oku = st.columns(2)
     
-    if not gmail_adresi or not gmail_sifre:
-        st.warning("Lütfen e-posta göndermek ve yanıtları okumak için yukarıdaki Gmail bilgilerini girin.")
-    else:
-        col_gonder, col_oku = st.columns(2)
-        
-        # --- E-POSTA GÖNDERME KISMI ---
-        with col_gonder:
-            st.subheader("1. E-posta Gönder")
-            if not st.session_state.lead_results.empty:
-                if st.button("🚀 Listeye Toplu E-posta Gönder"):
-                    basarili = 0
-                    hatali = 0
-                    progress = st.progress(0)
+    # --- E-POSTA GÖNDERME KISMI ---
+    with col_gonder:
+        st.subheader("1. E-posta Gönder")
+        if not st.session_state.lead_results.empty:
+            if st.button("🚀 Listeye Toplu E-posta Gönder"):
+                basarili = 0
+                hatali = 0
+                progress = st.progress(0)
+                
+                for i, row in st.session_state.lead_results.iterrows():
+                    alici = row['E-posta']
+                    site = row['Domain']
+                    hata_sayisi = row['Hata']
                     
-                    for i, row in st.session_state.lead_results.iterrows():
-                        alici = row['E-posta']
-                        site = row['Domain']
-                        hata_sayisi = row['Hata']
-                        
-                        # E-posta İçeriği (Kişiselleştirilmiş)
-                        msg = MIMEMultipart()
-                        msg['From'] = gmail_adresi
-                        msg['To'] = alici
-                        msg['Subject'] = f"{site} sitenizdeki {hata_sayisi} kritik erişilebilirlik hatası hakkında"
-                        
-                        body = f"""Merhaba,
-                        
+                    msg = MIMEMultipart()
+                    msg['From'] = GMAIL_ADRESI
+                    msg['To'] = alici
+                    msg['Subject'] = f"{site} sitenizdeki {hata_sayisi} kritik erişilebilirlik hatası hakkında"
+                    
+                    body = f"""Merhaba,
+                    
 {site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde, görme engelli müşterilerinizin alışveriş yapmasını zorlaştıran {hata_sayisi} kritik hata tespit ettim.
-                        
+                    
 Bu hatalar hem yasal risk oluşturuyor hem de potansiyel müşteri kaybına yol açıyor. İsterseniz detaylı raporu gönderebilirim.
-                        
+                    
 Sadece bu e-postaya "Evet" yazmanız yeterli.
-                        
+                    
 Saygılarımla,
-[BURAYA ADINIZI YAZIN]"""
-                        
-                        msg.attach(MIMEText(body, 'plain'))
-                        
-                        try:
-                            server = smtplib.SMTP('smtp.gmail.com', 587)
-                            server.starttls()
-                            server.login(gmail_adresi, gmail_sifre)
-                            server.send_message(msg)
-                            server.quit()
-                            basarili += 1
-                        except Exception as e:
-                            hatali += 1
-                            
-                        progress.progress((i + 1) / len(st.session_state.lead_results))
-                        time.sleep(2) # Spam'a düşmemek için 2 saniye bekle
-                        
-                    st.success(f"İşlem tamam! {basarili} e-posta başarıyla gönderildi. {hatali} hata.")
-            else:
-                st.info("Gönderilecek liste boş. Önce 'Otomatik Müşteri Bulucu' sekmesinden arama yapın.")
-
-        # --- YANITLARI OKUMA VE SINIFLANDIRMA KISMI ---
-        with col_oku:
-            st.subheader("2. Gelen Yanıtları Kontrol Et")
-            if st.button("📥 Gelen Kutusunu Tara ve Sınıflandır"):
-                with st.spinner("Gmail'e bağlanılıyor ve yanıtlar okunuyor..."):
+Cuma Babacan"""
+                    
+                    msg.attach(MIMEText(body, 'plain'))
+                    
                     try:
-                        # IMAP Bağlantısı
-                        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-                        mail.login(gmail_adresi, gmail_sifre)
-                        mail.select("inbox")
-                        
-                        # Son 20 e-postayı oku
-                        status, messages = mail.search(None, "ALL")
-                        mail_ids = messages[0].split()[-20:] # Son 20 mail
-                        
-                        yanitlar = []
-                        olumlu_kelimeler = ["evet", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
-                        olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil"]
-                        
-                        for i in reversed(mail_ids):
-                            typ, data = mail.fetch(i, '(RFC822)')
-                            for response_part in data:
-                                if isinstance(response_part, tuple):
-                                    msg = email.message_from_bytes(response_part[1])
-                                    konu = msg['Subject']
-                                    gonderen = msg['From']
-                                    
-                                    # Sadece bize gelen (Re: ile başlayan) yanıtları al
-                                    if "Re:" in konu or "Ynt:" in konu:
-                                        # İçeriği al
-                                        if msg.is_multipart():
-                                            for part in msg.walk():
-                                                if part.get_content_type() == "text/plain":
-                                                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
-                                                    break
-                                        else:
-                                            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
-                                            
-                                        # Sınıflandırma
-                                        durum = "Belirsiz"
-                                        if any(k in body for k in olumlu_kelimeler):
-                                            durum = "🔥 Olumlu (Satışa Hazır)"
-                                        elif any(k in body for k in olumsuz_kelimeler):
-                                            durum = "❌ Olumsuz"
-                                            
-                                        yanitlar.append({
-                                            "Gönderen": gonderen,
-                                            "Konu": konu,
-                                            "Durum": durum
-                                        })
-                        mail.logout()
-                        
-                        if yanitlar:
-                            st.session_state.gelen_yanitlar = pd.DataFrame(yanitlar)
-                            st.success(f"{len(yanitlar)} adet yanıt bulundu ve sınıflandırıldı!")
-                        else:
-                            st.info("Henüz bir yanıt bulunamadı.")
-                            
+                        server = smtplib.SMTP('smtp.gmail.com', 587)
+                        server.starttls()
+                        server.login(GMAIL_ADRESI, GMAIL_SIFRESI)
+                        server.send_message(msg)
+                        server.quit()
+                        basarili += 1
                     except Exception as e:
-                        st.error(f"Bağlantı Hatası: {e}. Lütfen Gmail uygulama şifrenizi kontrol edin.")
+                        hatali += 1
                         
-            # Gelen Yanıtları Göster
-            if not st.session_state.gelen_yanitlar.empty:
-                st.write("### 📊 Gelen Yanıtların Durumu")
-                st.dataframe(st.session_state.gelen_yanitlar, use_container_width=True)
+                    progress.progress((i + 1) / len(st.session_state.lead_results))
+                    time.sleep(2) # Spam'a düşmemek için 2 saniye bekle
+                    
+                st.success(f"İşlem tamam! {basarili} e-posta başarıyla gönderildi. {hatali} hata.")
+        else:
+            st.info("Gönderilecek liste boş. Önce 'Otomatik Müşteri Bulucu' sekmesinden arama yapın.")
+
+    # --- YANITLARI OKUMA VE SINIFLANDIRMA KISMI ---
+    with col_oku:
+        st.subheader("2. Gelen Yanıtları Kontrol Et")
+        if st.button("📥 Gelen Kutusunu Tara ve Sınıflandır"):
+            with st.spinner("Gmail'e bağlanılıyor ve yanıtlar okunuyor..."):
+                try:
+                    mail = imaplib.IMAP4_SSL("imap.gmail.com")
+                    mail.login(GMAIL_ADRESI, GMAIL_SIFRESI)
+                    mail.select("inbox")
+                    
+                    status, messages = mail.search(None, "ALL")
+                    mail_ids = messages[0].split()[-20:] # Son 20 mail
+                    
+                    yanitlar = []
+                    olumlu_kelimeler = ["evet", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
+                    olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil"]
+                    
+                    for i in reversed(mail_ids):
+                        typ, data = mail.fetch(i, '(RFC822)')
+                        for response_part in data:
+                            if isinstance(response_part, tuple):
+                                msg = email.message_from_bytes(response_part[1])
+                                konu = msg['Subject']
+                                gonderen = msg['From']
+                                
+                                if "Re:" in konu or "Ynt:" in konu:
+                                    if msg.is_multipart():
+                                        for part in msg.walk():
+                                            if part.get_content_type() == "text/plain":
+                                                body = part.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
+                                                break
+                                    else:
+                                        body = msg.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
+                                        
+                                    durum = "Belirsiz"
+                                    if any(k in body for k in olumlu_kelimeler):
+                                        durum = "🔥 Olumlu (Satışa Hazır)"
+                                    elif any(k in body for k in olumsuz_kelimeler):
+                                        durum = "❌ Olumsuz"
+                                        
+                                    yanitlar.append({
+                                        "Gönderen": gonderen,
+                                        "Konu": konu,
+                                        "Durum": durum
+                                    })
+                    mail.logout()
+                    
+                    if yanitlar:
+                        st.session_state.gelen_yanitlar = pd.DataFrame(yanitlar)
+                        st.success(f"{len(yanitlar)} adet yanıt bulundu ve sınıflandırıldı!")
+                    else:
+                        st.info("Henüz bir yanıt bulunamadı.")
+                        
+                except Exception as e:
+                    st.error(f"Bağlantı Hatası: {e}. Lütfen Gmail uygulama şifrenizi kontrol edin.")
+                    
+        if not st.session_state.gelen_yanitlar.empty:
+            st.write("### 📊 Gelen Yanıtların Durumu")
+            st.dataframe(st.session_state.gelen_yanitlar, use_container_width=True)
