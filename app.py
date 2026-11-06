@@ -12,15 +12,10 @@ st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 st.title("♿ Erişilebilirlik Denetim ve Müşteri Yönetim Paneli")
 st.markdown("Web sitelerinin engelli erişilebilirliğini **gerçek Google API'si** ile denetleyin, raporlayın ve aylık gelirinizi yönetin.")
 
-# --- VERİ TABANI (Kalıcı Hafıza) ---
+# --- VERİ TABANI (TERTEMİZ BAŞLANGIÇ) ---
 if 'musteri_df' not in st.session_state:
-    ornek_veri = {
-        "Müşteri Adı": ["Örnek Tekstil A.Ş.", "Moda E-Ticaret"],
-        "Web Sitesi": ["www.ornektekstil.com", "www.modaeticaret.com"],
-        "Hata Sayısı": [14, 8],
-        "Aylık Ücret (TL)": [1500.0, 2000.0]
-    }
-    st.session_state.musteri_df = pd.DataFrame(ornek_veri)
+    # HİÇBİR ÖRNEK VERİ YOK. Bomboş bir tablo ile başlıyoruz.
+    st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
 
 df = st.session_state.musteri_df
 
@@ -32,10 +27,10 @@ with tab1:
     st.header("Sistem Özeti")
     
     col1, col2, col3, col4 = st.columns(4)
-    toplam_gelir = df["Aylık Ücret (TL)"].sum()
+    toplam_gelir = df["Aylık Ücret (TL)"].sum() if not df.empty else 0.0
     toplam_musteri = len(df)
-    toplam_hata = df["Hata Sayısı"].sum()
-    ortalama_gelir = toplam_gelir / toplam_musteri if toplam_musteri > 0 else 0
+    toplam_hata = df["Hata Sayısı"].sum() if not df.empty else 0
+    ortalama_gelir = toplam_gelir / toplam_musteri if toplam_musteri > 0 else 0.0
     
     col1.metric("Aylık Garantili Gelir", f"{toplam_gelir:,.2f} TL")
     col2.metric("Aktif Müşteri Sayısı", toplam_musteri)
@@ -44,13 +39,16 @@ with tab1:
     
     st.divider()
     
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        st.subheader("Müşterilere Göre Gelir Dağılımı")
-        st.bar_chart(df.set_index("Müşteri Adı")["Aylık Ücret (TL)"], color="#00C853")
-    with col_g2:
-        st.subheader("Müşteri Sitelerindeki Hata Sayıları")
-        st.bar_chart(df.set_index("Müşteri Adı")["Hata Sayısı"], color="#FF5252")
+    if not df.empty:
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.subheader("Müşterilere Göre Gelir Dağılımı")
+            st.bar_chart(df.set_index("Müşteri Adı")["Aylık Ücret (TL)"], color="#00C853")
+        with col_g2:
+            st.subheader("Müşteri Sitelerindeki Hata Sayıları")
+            st.bar_chart(df.set_index("Müşteri Adı")["Hata Sayısı"], color="#FF5252")
+    else:
+        st.info("Henüz kayıtlı müşteri yok. 'Otomatik Müşteri Bulucu' sekmesinden gerçek müşteriler bulmaya başlayın!")
 
 # 2. SEKME: MÜŞTERİ YÖNETİMİ
 with tab2:
@@ -84,7 +82,10 @@ with tab2:
                     st.rerun()
 
     st.subheader("Kayıtlı Müşteriler")
-    st.dataframe(df, use_container_width=True)
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.warning("Sistemde kayıtlı müşteri bulunmamaktadır.")
 
 # 3. SEKME: GERÇEK TARAYICI (GOOGLE API)
 with tab3:
@@ -134,14 +135,14 @@ with tab3:
                             st.error("API yanıtı beklenen formatta değil. Lütfen site adresini kontrol edin.")
                             
                 except requests.exceptions.Timeout:
-                    st.error("Zaman aşımı! Site çok yavaş yanıt veriyor veya Google tarafından engellenmiş olabilir. Lütfen daha küçük bir site (örneğin bir blog) ile test edin.")
+                    st.error("Zaman aşımı! Site çok yavaş yanıt veriyor veya Google tarafından engellenmiş olabilir.")
                 except Exception as e:
                     st.error(f"Beklenmeyen bir hata oluştu: {e}")
 
 # 4. SEKME: OTOMATİK MÜŞTERİ BULUCU (SERPAPI)
 with tab4:
     st.header("🤖 Otomatik Müşteri Bulucu")
-    st.write("Hedeflediğiniz sektörü yazın. Sistem Google üzerinden arama yapacak, bulduğu siteleri ziyaret edecek ve iletişim e-postalarını toplayacaktır.")
+    st.write("Hedeflediğiniz sektörü yazın. Sistem Google üzerinden **gerçek** arama yapacak, bulduğu siteleri ziyaret edecek ve iletişim e-postalarını toplayacaktır.")
     
     with st.form("lead_gen_form"):
         col_s1, col_s2 = st.columns(2)
@@ -152,7 +153,7 @@ with tab4:
         ara_butonu = st.form_submit_button("Potansiyel Müşterileri Bul")
         
         if ara_butonu and sektor:
-            with st.spinner("Google'da arama yapılıyor ve sitelerin e-postaları toplanıyor... Lütfen bekleyin..."):
+            with st.spinner("Google'da canlı arama yapılıyor ve sitelerin e-postaları toplanıyor... Lütfen bekleyin..."):
                 try:
                     SERP_API_KEY = "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c"
                     query = f"{sektor} {sehir} iletişim email"
@@ -195,7 +196,7 @@ with tab4:
                             leads.append({"Site Adı": site_title, "URL": site_url, "E-posta": email})
                     
                     if leads:
-                        st.success(f"{len(leads)} adet potansiyel müşteri bulundu!")
+                        st.success(f"{len(leads)} adet GERÇEK potansiyel müşteri bulundu!")
                         st.dataframe(pd.DataFrame(leads), use_container_width=True)
                         st.info("💡 **İpucu:** E-postası bulunan sitelere doğrudan ulaşabilirsiniz. E-postası bulunamayanların iletişim sayfasına manuel gitmeniz gerekebilir.")
                     else:
