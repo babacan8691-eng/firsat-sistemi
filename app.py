@@ -93,42 +93,49 @@ with tab3:
         tara_butonu = st.form_submit_button("Gerçek Taramayı Başlat")
         
         if tara_butonu and hedef_url:
-            # URL formatını düzelt
             if not hedef_url.startswith("http"):
                 hedef_url = "https://" + hedef_url
                 
             with st.spinner(f"{hedef_url} taranıyor... Google API'sinden veri bekleniyor (Bu işlem 10-20 saniye sürebilir)..."):
                 try:
-                    # Google PageSpeed Insights API (Erişilebilirlik Kategorisi)
-                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility"
-                    response = requests.get(api_url)
-                    data = response.json()
+                    # API Anahtarınız koda entegre edildi
+                    API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                     
-                    if 'lighthouseResult' in data:
-                        # Skoru al (0-1 arası gelir, 100 ile çarpıyoruz)
-                        score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
-                        
-                        # Başarısız olan (Hata veren) testleri bul
-                        audits = data['lighthouseResult']['audits']
-                        failures = [details['title'] for audit, details in audits.items() if details.get('score') == 0]
-                        hata_sayisi = len(failures)
-                        
-                        st.success("Tarama Tamamlandı! (Gerçek Veri)")
-                        
-                        col_r1, col_r2 = st.columns(2)
-                        col_r1.metric(label="Erişilebilirlik Skoru", value=f"{score:.0f} / 100")
-                        col_r2.metric(label="Bulunan Kritik Hata", value=hata_sayisi)
-                        
-                        if hata_sayisi > 0:
-                            st.warning("Bulunan başlıca hatalar:")
-                            for hata in failures[:10]: # İlk 10 hatayı göster
-                                st.write(f"- {hata}")
-                                
-                            st.info(f"💡 **Satış Taktiki:** Bu siteye 'Sitenizde engelli müşterilerin alışveriş yapmasını engelleyen {hata_sayisi} kritik hata buldum. Erişilebilirlik skorunuz 100 üzerinden {score:.0f}. Bu hataları çözmek için aylık bakım paketimiz var' diyebilirsiniz.")
-                        else:
-                            st.success("Harika! Bu sitede kritik bir erişilebilirlik hatası bulunamadı.")
+                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
+                    
+                    response = requests.get(api_url, timeout=20)
+                    
+                    if response.status_code != 200:
+                        st.error(f"Google API Hatası: {response.status_code}. Lütfen anahtarın doğruluğundan emin olun veya siteyi kontrol edin.")
                     else:
-                        st.error("Google API'sinden veri alınamadı. Girdiğiniz sitenin açık ve doğru olduğundan emin olun.")
+                        data = response.json()
                         
+                        if 'lighthouseResult' in data:
+                            score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
+                            audits = data['lighthouseResult']['audits']
+                            
+                            # Skoru 0 olan (yani hata veren) testleri filtrele
+                            failures = [details['title'] for audit, details in audits.items() if details.get('score') == 0]
+                            hata_sayisi = len(failures)
+                            
+                            st.success("Tarama Tamamlandı! (Gerçek Veri)")
+                            
+                            col_r1, col_r2 = st.columns(2)
+                            col_r1.metric(label="Erişilebilirlik Skoru", value=f"{score:.0f} / 100")
+                            col_r2.metric(label="Bulunan Kritik Hata", value=hata_sayisi)
+                            
+                            if hata_sayisi > 0:
+                                st.warning("Bulunan başlıca hatalar:")
+                                for hata in failures[:10]:
+                                    st.write(f"- {hata}")
+                                    
+                                st.info(f"💡 **Satış Taktiki:** Bu siteye 'Sitenizde engelli müşterilerin alışveriş yapmasını engelleyen {hata_sayisi} kritik hata buldum. Erişilebilirlik skorunuz 100 üzerinden {score:.0f}. Bu hataları çözmek için aylık bakım paketimiz var' diyebilirsiniz.")
+                            else:
+                                st.success("Harika! Bu sitede kritik bir erişilebilirlik hatası bulunamadı.")
+                        else:
+                            st.error("API yanıtı beklenen formatta değil. Site geçerli bir URL mi?")
+                            
+                except requests.exceptions.Timeout:
+                    st.error("İstek zaman aşımına uğradı. Site çok yavaş yanıt veriyor olabilir, lütfen tekrar deneyin.")
                 except Exception as e:
-                    st.error(f"Bir hata oluştu: {e}")
+                    st.error(f"Beklenmeyen bir hata oluştu: {e}")
