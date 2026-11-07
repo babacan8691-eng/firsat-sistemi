@@ -125,7 +125,8 @@ hata_sozlugu = {
     "Links do not have a discernible name": "Bağlantıların (link) anlaşılır bir adı yok. Çözüm: Sadece ikon olan linklere metin veya 'aria-label' ekleyin.",
     "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: ARIA etiketlerinin değerlerini standartlara uygun hale getirin.",
     "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: Sayfanın ana içeriğini <main> etiketi içine alın.",
-    "List items": "Liste öğeleri (<li>) yanlış yerde. Çözüm: <li> etiketlerini <ul>, <ol> veya <menu> içine alın."
+    "List items": "Liste öğeleri (<li>) yanlış yerde. Çözüm: <li> etiketlerini <ul>, <ol> veya <menu> içine alın.",
+    "role=\"dialog\" or role=\"alertdialog\" do not have accessible names": "Diyalog (açılır pencere) öğelerinin erişilebilir adları yok. Çözüm: Pencerelere 'aria-label' ekleyin."
 }
 
 def hatayi_cevir(hata_ingilizce):
@@ -181,21 +182,29 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA (RESİM ENGELLEYİCİ EKLENDİ) =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=10)
-        emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r.text)
-        if emails:
-            return emails[0]
+        
+        # Resim dosyalarını filtrelemek için geçerli e-posta deseni
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        emails = re.findall(email_pattern, r.text)
+        
+        # Sadece geçerli e-postaları döndür (resim uzantılı olanları atla)
+        for em in emails:
+            if not em.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                return em
+                
         for path in ['/iletisim', '/contact', '/iletisim/']:
             contact_url = url.rstrip('/') + path
             try:
                 r2 = requests.get(contact_url, headers=headers, timeout=5)
-                emails2 = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r2.text)
-                if emails2:
-                    return emails2[0]
+                emails2 = re.findall(email_pattern, r2.text)
+                for em in emails2:
+                    if not em.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                        return em
             except:
                 continue
     except Exception:
@@ -260,7 +269,8 @@ with tab4:
                     "etstur", "tatilbudur", "istanbul.net.tr", ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", 
                     "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
-                    "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi"
+                    "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
+                    "sorgulama", "telefonrehberi", "bulucu" # YENİ EKLENENLER
                 ]
 
                 leads = []
@@ -294,7 +304,7 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi"]): continue
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
