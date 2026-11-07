@@ -104,7 +104,8 @@ hata_sozlugu = {
     "ARIA input fields do not have accessible names": "Form alanlarının erişilebilir adları yok. Çözüm: Giriş alanlarına 'label' veya 'aria-label' ekleyin.",
     "Links do not have a discernible name": "Bağlantıların (link) anlaşılır bir adı yok. Çözüm: Sadece ikon olan linklere metin veya 'aria-label' ekleyin.",
     "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: ARIA etiketlerinin değerlerini standartlara uygun hale getirin.",
-    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: Sayfanın ana içeriğini <main> etiketi içine alın."
+    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: Sayfanın ana içeriğini <main> etiketi içine alın.",
+    "List items": "Liste öğeleri (<li>) yanlış yerde. Çözüm: <li> etiketlerini <ul>, <ol> veya <menu> içine alın."
 }
 
 def hatayi_cevir(hata_ingilizce):
@@ -177,7 +178,9 @@ with tab2:
             )
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+    st.dataframe(df, use_container_width=True)
+
+# ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -347,12 +350,10 @@ with tab4:
                 st.write(f"**Sektör:** {row['Sektör']}")
                 st.write(f"**E-posta:** {row['E-posta']}")
                 st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
-                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}")
-
-# ================= 5. SEKME =================
+                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}") # ================= 5. SEKME =================
 with tab5:
     st.header("📧 E-posta Gönderimi ve Giden Kutusu Logları")
-    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı.")
+    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı. Gönderilen mailler, spam'e düşmemesi için 2 saniye aralıklarla yollanır.")
 
     col_gonder, col_oku = st.columns(2)
 
@@ -383,25 +384,33 @@ with tab5:
                         msg = MIMEMultipart()
                         msg['From'] = GMAIL_ADRESI
                         msg['To'] = alici
-                        msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
+                        # Spam filtrelerine takılmamak için merak uyandıran başlık
+                        msg['Subject'] = f"Dikkat: {site} sitenizde {hata_sayisi} kritik hata bulundu"
 
+                        # EMPATİ VE ACİLİYET ODAKLI İKNA ŞABLONU
                         body = f"""Merhaba {sirket_adi} Yetkilisi,
 
-{site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
+Ben Cuma Babacan. Kendim de bir engelli bireyim ve engelli bireylerin web sitelerine sorunsuz erişebilmesi için bir erişilebilirlik denetim sistemi geliştirdim.
 
-Tespit ettiğim en önemli sorun(lar):
-**{hata_detayi}**
+Bugün sizin sitenizi sistemimle test ettim ve **{site}** adresinde engelli bireylerin (ve Google botlarının) karşılaştığı **{hata_sayisi}** adet kritik engel tespit ettim.
 
-Bu hataların giderilmesi için size özel bir bakım paketimiz mevcut. Tek seferlik çözüm ve aylık takip bedeli **{tahmini_ucret} TL** olarak belirlenmiştir.
+Tespit ettiğim en önemli sorunlar şunlar:
+👉 **{hata_detayi}**
 
-Ayrıca, 2025 Erişilebilirlik Genelgesi kapsamında işletmelere yönelik idari para cezaları gündemde.
+**Bunu neden size yazıyorum?**
+Sadece satış yapmak için değil; 2025 yılında yürürlüğe girecek Erişilebilirlik Genelgesi kapsamında, web sitesi engelli erişimine uygun olmayan işletmelere idari para cezaları uygulanacak. Ayrıca Google, erişilebilirliği tam olan siteleri arama sonuçlarında daha üst sıralarda gösteriyor.
 
-İsterseniz sitenizdeki tüm hataların listesini ve çözüm önerilerini içeren **ücretsiz detaylı raporu** gönderebilirim.
+Bu hataların giderilmesi için size özel bir bakım paketimiz mevcut. Çözüm ve aylık takip bedeli **{tahmini_ucret} TL** olarak belirlenmiştir. 
 
-Sadece bu e-postaya **"Evet"** yazmanız yeterli.
+Ancak hemen bir ödeme yapmanıza gerek yok. İsterseniz sitenizin tamamının taranıp, hangi sayfada hangi hatanın olduğunu gösteren **ücretsiz detaylı denetim raporunu** size gönderebilirim.
+
+Bu ücretsiz raporu talep etmek için sadece bu e-postaya **"Raporu Gönder"** yazmanız yeterli.
+
+Sağlıklı ve kazançlı günler dilerim.
 
 Saygılarımla,
-Cuma Babacan"""
+Cuma Babacan
+Erişilebilirlik Danışmanı"""
 
                         msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
@@ -449,8 +458,9 @@ Cuma Babacan"""
                     mail_ids = messages[0].split()[-20:]
 
                     yanitlar = []
-                    olumlu_kelimeler = ["evet", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
-                    olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil"]
+                    # "Evet" yerine artık "raporu gönder" kelimesini de arıyoruz
+                    olumlu_kelimeler = ["evet", "raporu gönder", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
+                    olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil", "spam"]
 
                     for i in reversed(mail_ids):
                         typ, data = mail.fetch(i, '(RFC822)')
@@ -460,7 +470,7 @@ Cuma Babacan"""
                                 konu = msg['Subject'] or ""
                                 gonderen = msg['From'] or ""
 
-                                if "Re:" in konu or "Ynt:" in konu:
+                                if "Re:" in konu or "Ynt:" in konu or "Dikkat:" in konu:
                                     body = ""
                                     if msg.is_multipart():
                                         for part in msg.walk():
