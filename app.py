@@ -26,19 +26,28 @@ if not st.session_state.logged_in:
     st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
     
     with st.form("login_form"):
-        kullanici_adi = st.text_input("Kullanıcı Adı")
-        sifre = st.text_input("Şifre", type="password")
+        kullanici_adi = st.text_input("Kullanıcı Adı").strip() # .strip() boşlukları temizler
+        sifre = st.text_input("Şifre", type="password").strip()
         submit = st.form_submit_button("Giriş Yap")
         
         if submit:
-            if kullanici_adi == "Cuma Babacan" and sifre == "784512":
+            # Değişkenlere atayarak kontrol ediyoruz
+            DOGRU_KULLANICI = "Cuma Babacan"
+            DOGRU_SIFRE = "784512"
+            
+            if kullanici_adi == DOGRU_KULLANICI and sifre == DOGRU_SIFRE:
                 st.session_state.logged_in = True
                 st.rerun()
             else:
-                st.error("Hatalı kullanıcı adı veya şifre!")
+                st.error("Hatalı kullanıcı adı veya şifre! (Lütfen büyük/küçük harf ve boşluklara dikkat edin)")
     st.stop()  # Giriş yapılmadıysa kodun devamını çalıştırma
 
 st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
+
+# Çıkış Yap Butonu (Sağ üst köşe için)
+if st.sidebar.button("Çıkış Yap"):
+    st.session_state.logged_in = False
+    st.rerun()
 
 # ================= KALICI DEPOLAMA =================
 SUPABASE_KEY = "sb_publishable_Au_J5CujUVFKyZzdx7zALw_5qLnIb3r"
@@ -396,7 +405,6 @@ with tab5:
                     hatali = 0
                     progress = st.progress(0)
                     
-                    # KENDİ PANELİNİN CANLI LİNKİ
                     PANEL_LINKI = "https://yimf3leyv.streamlit.app"
 
                     for i, row in gonderilecekler.iterrows():
