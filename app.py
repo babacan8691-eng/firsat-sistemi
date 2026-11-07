@@ -178,11 +178,8 @@ def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=10)
-        
-        # Sadece geçerli e-posta formatlarını al (resim uzantılarını tamamen yoksay)
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
-        
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
         
         for em in emails:
@@ -190,7 +187,6 @@ def eposta_bul(url):
             if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                 if not any(fake in em_lower for fake in fake_emails):
                     return em
-                
         for path in ['/iletisim', '/contact', '/iletisim/']:
             contact_url = url.rstrip('/') + path
             try:
@@ -232,6 +228,14 @@ with tab3:
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
     
+    # ESKİ VERİYİ TEMİZLEME BUTONU (DÖNGÜYÜ KIRAN BUTON)
+    col_temizle1, col_temizle2 = st.columns([1, 4])
+    with col_temizle1:
+        if st.button("🗑️ Listeyi Temizle"):
+            st.session_state.lead_results = pd.DataFrame()
+            persist("lead_results")
+            st.rerun()
+            
     arama_modu = st.radio("Nasıl Arama Yapmak İstersiniz?", ["Hedefli Arama (Sektör + Şehir)", "Genel Arama (Serbest Metin)"], horizontal=True)
     
     with st.form("otomatik_avci"):
@@ -249,14 +253,14 @@ with tab4:
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
 
         if baslat_butonu:
-            # ESKİ VERİYİ KESİN OLARAK SIFIRLA
+            # YENİ TARAMA BAŞLARKEN ESKİYİ SIFIRLA
             st.session_state.lead_results = pd.DataFrame()
             persist("lead_results")
             
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # DAHA AGRESİF KARA LİSTE
+                # EN AGRESİF KARA LİSTE (Audi, Volkswagen vb. eklendi)
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
@@ -266,7 +270,8 @@ with tab4:
                     "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
-                    "sorgulama", "telefonrehberi", "bulucu", "sportcard", "yönetim", "otomasyon", "sistem", "panel"
+                    "sorgulama", "telefonrehberi", "bulucu", "sportcard", "sporcard", "yönetim", "otomasyon", "sistem", "panel",
+                    "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat" # OTOMOBİL MARKALARI
                 ]
 
                 leads = []
@@ -300,8 +305,7 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            # Domain içinde kara liste elemesi (Çok sıkı)
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform"]): continue
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
