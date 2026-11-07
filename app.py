@@ -8,72 +8,44 @@ import imaplib
 import email
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime
 from bs4 import BeautifulSoup
 from serpapi import GoogleSearch
 
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
 
-# --- KOD İÇİNE GÖMÜLÜ GMAIL BİLGİLERİ ---
+# --- GMAIL BİLGİLERİ ---
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
-# --- HATA ÇEVİRİ VE ÇÖZÜM SÖZLÜĞÜ ---
+# --- HATA ÇEVİRİ SÖZLÜĞÜ ---
 hata_sozlugu = {
-    "Image elements do not have [alt] attributes": {
-        "tr": "Görsellerde alternatif metin (alt etiketi) eksik",
-        "cozum": "Her görsele içeriği tanımlayan bir 'alt' metni ekleyin (dekoratifse alt=\"\" bırakın)."
-    },
-    "Heading elements are not in a sequentially-descending order": {
-        "tr": "Başlık etiketleri (H1, H2, H3) sıralı değil",
-        "cozum": "Başlıkları hiyerarşik sırayla kullanın (H1 -> H2 -> H3 gibi, seviye atlamayın)."
-    },
-    "Elements with role=\"none\" or role=\"presentation\" have conflicts": {
-        "tr": "Sunum rolü çakışması (role=\"presentation\")",
-        "cozum": "Etkileşimli veya odaklanabilir öğelerden role=\"presentation\" etiketini kaldırın."
-    },
-    "Touch targets do not have sufficient size or spacing": {
-        "tr": "Dokunmatik hedefler (butonlar) çok küçük veya birbirine çok yakın",
-        "cozum": "Buton boyutlarını en az 48x48 piksel yapın ve aralarına en az 8 piksel boşluk ekleyin."
-    },
-    "Elements with visible text labels do not have matching accessible names": {
-        "tr": "Görünen metin ile erişilebilir isim uyuşmuyor",
-        "cozum": "aria-label değerinin, ekranda görünen yazıyla birebir aynı olmasını sağlayın."
-    },
-    "Buttons do not have an accessible name": {
-        "tr": "Butonların erişilebilir bir adı yok",
-        "cozum": "Buton içine metin ekleyin veya aria-label ile butonu adlandırın."
-    },
-    "Background and foreground colors do not have a sufficient contrast ratio": {
-        "tr": "Renk kontrastı yetersiz",
-        "cozum": "Metin ve arka plan renkleri arasındaki kontrast oranını en az 4.5:1 yapın."
-    },
-    "Links do not have a discernible name": {
-        "tr": "Bağlantıların (linklerin) anlaşılır bir adı yok",
-        "cozum": "Tıklanabilir linklerin içine 'Buraya tıkla' yerine hedefi belirten metinler yazın."
-    },
-    "Form elements do not have associated labels": {
-        "tr": "Form alanlarının ilişkili etiketleri (label) yok",
-        "cozum": "Her form elemanı için ilgili HTML <label> etiketini doğru şekilde ilişkilendirin."
-    }
+    "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele içeriği tanımlayan bir 'alt' metni ekleyin.",
+    "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Başlıkları hiyerarşik sırayla kullanın.",
+    "Elements with role=\"none\" or role=\"presentation\" have conflicts": "Sunum rolü çakışması. Çözüm: Etkileşimli öğelerden role=\"presentation\" etiketini kaldırın.",
+    "Touch targets do not have sufficient size or spacing": "Dokunmatik hedefler çok küçük. Çözüm: Buton boyutlarını en az 48x48 piksel yapın.",
+    "Buttons do not have an accessible name": "Butonların erişilebilir bir adı yok. Çözüm: Buton içine metin ekleyin veya aria-label ile adlandırın.",
+    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin ve arka plan arasındaki kontrastı artırın."
 }
 
 def hatayi_cevir(hata_ingilizce):
     for key, val in hata_sozlugu.items():
         if key.lower() in hata_ingilizce.lower():
-            return f"Sorun: {val['tr']} | Çözüm: {val['cozum']}"
-    return f"Sorun: {hata_ingilizce} (Çözüm için lütfen inceleyin)"
+            return val
+    return f"{hata_ingilizce} (Çözüm için incelenmeli)"
 
-# --- VERİ TABANI ---
+# --- VERİ TABANI (SESSION STATE) ---
 if 'musteri_df' not in st.session_state:
     st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
-df = st.session_state.musteri_df
-
 if 'lead_results' not in st.session_state:
     st.session_state.lead_results = pd.DataFrame()
-
 if 'gelen_yanitlar' not in st.session_state:
     st.session_state.gelen_yanitlar = pd.DataFrame()
+if 'gonderilenler_log' not in st.session_state: # Giden e-posta logu
+    st.session_state.gonderilenler_log = pd.DataFrame(columns=["Tarih", "Domain", "E-posta", "Hata Sayısı", "Talep Edilen Ücret", "Durum"])
+
+df = st.session_state.musteri_df
 
 # --- SEKMELER ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -81,17 +53,37 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "👥 Müşteri Yönetimi", 
     "🔍 Gerçek Site Tarayıcı", 
     "🤖 Otomatik Müşteri Bulucu",
-    "📧 E-posta Otomasyonu & Yanıtlar"
+    "📧 E-posta Otomasyonu & Loglar"
 ])
 
-# 1. SEKME: GENEL BAKIŞ
+# 1. SEKME: GENEL BAKIŞ (BAŞARI SKORU)
 with tab1:
-    st.header("Sistem Özeti")
+    st.header("Sistem Özeti ve Başarı Skoru")
+    
+    # Hesaplamalar
+    toplam_gonderilen = len(st.session_state.gonderilenler_log)
+    toplam_yanit = len(st.session_state.gelen_yanitlar)
+    
+    olumlu_yanit_sayisi = 0
+    if not st.session_state.gelen_yanitlar.empty:
+        olumlu_yanit_sayisi = len(st.session_state.gelen_yanitlar[st.session_state.gelen_yanitlar["Durum"] == "🔥 Olumlu (Satışa Hazır)"])
+        
+    basari_orani = (olumlu_yanit_sayisi / toplam_gonderilen * 100) if toplam_gonderilen > 0 else 0.0
+    potansiyel_gelir = st.session_state.gonderilenler_log["Talep Edilen Ücret"].sum() if not st.session_state.gonderilenler_log.empty else 0.0
+    
     col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Gönderilen E-posta", toplam_gonderilen)
+    col2.metric("Gelen Yanıt", toplam_yanit)
+    col3.metric("Satış Başarı Oranı", f"% {basari_orani:.1f}")
+    col4.metric("Potansiyel Ciro (Tümü)", f"{potansiyel_gelir:,.2f} TL")
+    
+    st.divider()
+    
+    st.subheader("Kazanılan Müşteriler (Aktif Gelir)")
+    col_m1, col_m2 = st.columns(2)
     toplam_gelir = df["Aylık Ücret (TL)"].sum() if not df.empty else 0.0
-    col1.metric("Aylık Garantili Gelir", f"{toplam_gelir:,.2f} TL")
-    col2.metric("Aktif Müşteri Sayısı", len(df))
-    col3.metric("Tespit Edilen Toplam Hata", df["Hata Sayısı"].sum() if not df.empty else 0)
+    col_m1.metric("Aylık Garantili Gelir", f"{toplam_gelir:,.2f} TL")
+    col_m2.metric("Aktif Müşteri Sayısı", len(df))
     
     if not df.empty:
         st.bar_chart(df.set_index("Müşteri Adı")["Aylık Ücret (TL)"], color="#00C853")
@@ -145,14 +137,12 @@ with tab4:
     
     with st.form("otomatik_avci"):
         sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
-        
-        st.info(f"Sistem taranacak sektörleri otomatik seçecek: {', '.join(hedef_sektorler)}")
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
         
         if baslat_butonu:
             arama_sehir = sehir_input
             
-            # GÜÇLENDİRİLMİŞ KARA LİSTE (Devlet, Eğitim, Forum, Rehber Engelleyici)
+            # GÜÇLENDİRİLMİŞ KARA LİSTE
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", 
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", 
@@ -164,7 +154,6 @@ with tab4:
             
             leads = []
             seen_domains = set() 
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
             limit = 3 
@@ -192,7 +181,6 @@ with tab4:
                         
                         if domain in seen_domains: continue
                         
-                        # Google API'den HATA DETAYLARINI ÇEK VE TÜRKÇELEŞTİR
                         hata = 0
                         hata_detaylari = "Erişilebilirlik eksiklikleri"
                         try:
@@ -203,7 +191,6 @@ with tab4:
                                 failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                                 hata = len(failures)
                                 if failures:
-                                    # İlk 2 hatayı Türkçe çevirisi ve çözümüyle al
                                     hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                         except: pass
                         
@@ -211,14 +198,18 @@ with tab4:
                             
                         mail = f"info@{domain}"
                         
+                        # FİYATLANDIRMA MANTIĞI (Taban 1500 TL + Hata başına 200 TL)
+                        tahmini_ucret = 1500 + (hata * 200)
+                        
                         leads.append({
                             "Sektör": sek,
                             "Şirket": r.get("title", domain)[:30],
                             "Domain": domain, 
                             "Hata": hata, 
+                            "Tahmini Ücret (TL)": tahmini_ucret,
                             "Hata Detayı (TR)": hata_detaylari,
                             "E-posta": mail,
-                            "Durum": "🔥 Sıcak (Hemen Ara)" if hata >= 8 else "Ilık (E-posta At)"
+                            "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
                         })
                         
                         seen_domains.add(domain) 
@@ -231,17 +222,17 @@ with tab4:
             
             if leads:
                 st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
-                st.success(f"Harika! Sistem arka planda çalıştı ve **{len(leads)}** adet gerçek/hatalı site buldu.")
+                st.success(f"Sistem **{len(leads)}** adet site buldu.")
             else:
-                st.warning("Uygun site bulunamadı. Lütfen farklı bir şehir seçin.")
+                st.warning("Uygun site bulunamadı.")
 
     if not st.session_state.lead_results.empty:
         st.dataframe(st.session_state.lead_results, use_container_width=True)
 
-# 5. SEKME: E-POSTA OTOMASYONU VE YANITLAR
+# 5. SEKME: E-POSTA OTOMASYONU VE LOGLAR
 with tab5:
-    st.header("📧 E-posta Gönderimi ve Gelen Kutusu Analizi")
-    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı olarak çalışmaya hazır.")
+    st.header("📧 E-posta Gönderimi ve Giden Kutusu Logları")
+    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı.")
     
     col_gonder, col_oku = st.columns(2)
     
@@ -250,54 +241,76 @@ with tab5:
         st.subheader("1. E-posta Gönder")
         if not st.session_state.lead_results.empty:
             if st.button("🚀 Listeye Toplu E-posta Gönder"):
-                basarili = 0
-                hatali = 0
-                progress = st.progress(0)
                 
-                for i, row in st.session_state.lead_results.iterrows():
-                    alici = row['E-posta']
-                    site = row['Domain']
-                    hata_sayisi = row['Hata']
-                    hata_detayi = row.get('Hata Detayı (TR)', 'çeşitli erişilebilirlik sorunları')
+                # DAHA ÖNCE GÖNDERİLENLERİ FİLTRELE
+                gonderilmis_domainler = set(st.session_state.gonderilenler_log["Domain"].tolist())
+                gonderilecekler = st.session_state.lead_results[~st.session_state.lead_results["Domain"].isin(gonderilmis_domainler)]
+                
+                if gonderilecekler.empty:
+                    st.warning("Bu listedeki tüm sitelere zaten e-posta gönderilmiş. Mükerrer gönderim engellendi.")
+                else:
+                    basarili = 0
+                    hatali = 0
+                    progress = st.progress(0)
                     
-                    msg = MIMEMultipart()
-                    msg['From'] = GMAIL_ADRESI
-                    msg['To'] = alici
-                    msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
-                    
-                    # ÇÖZÜM ODAKLI E-POSTA ŞABLONU (Türkçe Detaylı)
-                    body = f"""Merhaba,
-                    
-{site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google'ın resmi erişilebilirlik standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
-                    
+                    for i, row in gonderilecekler.iterrows():
+                        alici = row['E-posta']
+                        site = row['Domain']
+                        hata_sayisi = row['Hata']
+                        tahmini_ucret = row['Tahmini Ücret (TL)']
+                        hata_detayi = row.get('Hata Detayı (TR)', 'çeşitli sorunlar')
+                        
+                        msg = MIMEMultipart()
+                        msg['From'] = GMAIL_ADRESI
+                        msg['To'] = alici
+                        msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
+                        
+                        body = f"""Merhaba,
+                        
+{site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
+                        
 Tespit ettiğim en önemli sorun(lar): 
 **{hata_detayi}**
-                    
-Bu durum, görme engelli veya hareket kısıtlılığı olan potansiyel müşterilerinizin sitenizi kullanamamasına neden oluyor. Ayrıca, 2025 Erişilebilirlik Genelgesi kapsamında işletmelere yönelik yasal yaptırımlar ve idari para cezaları gündemde.
-                    
-İsterseniz sitenizdeki tüm hataların listesini ve her biri için uygulanabilir çözüm önerilerini içeren **ücretsiz detaylı raporu** gönderebilirim.
-                    
+                        
+Bu hataların giderilmesi için size özel bir bakım paketimiz mevcut. Tek seferlik çözüm ve aylık takip bedeli **{tahmini_ucret} TL** olarak belirlenmiştir.
+                        
+Ayrıca, 2025 Erişilebilirlik Genelgesi kapsamında işletmelere yönelik idari para cezaları gündemde. 
+                        
+İsterseniz sitenizdeki tüm hataların listesini ve çözüm önerilerini içeren **ücretsiz detaylı raporu** gönderebilirim.
+                        
 Sadece bu e-postaya **"Evet"** yazmanız yeterli.
-                    
+                        
 Saygılarımla,
 Cuma Babacan"""
-                    
-                    msg.attach(MIMEText(body, 'plain', 'utf-8'))
-                    
-                    try:
-                        server = smtplib.SMTP('smtp.gmail.com', 587)
-                        server.starttls()
-                        server.login(GMAIL_ADRESI, GMAIL_SIFRESI)
-                        server.send_message(msg)
-                        server.quit()
-                        basarili += 1
-                    except Exception as e:
-                        hatali += 1
                         
-                    progress.progress((i + 1) / len(st.session_state.lead_results))
-                    time.sleep(2)
-                    
-                st.success(f"İşlem tamam! {basarili} e-posta başarıyla gönderildi. {hatali} hata.")
+                        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                        
+                        try:
+                            server = smtplib.SMTP('smtp.gmail.com', 587)
+                            server.starttls()
+                            server.login(GMAIL_ADRESI, GMAIL_SIFRESI)
+                            server.send_message(msg)
+                            server.quit()
+                            basarili += 1
+                            
+                            # GÖNDERİLENLER LOGUNA EKLE
+                            yeni_log = pd.DataFrame({
+                                "Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M")],
+                                "Domain": [site],
+                                "E-posta": [alici],
+                                "Hata Sayısı": [hata_sayisi],
+                                "Talep Edilen Ücret": [tahmini_ucret],
+                                "Durum": ["Gönderildi (Yanıt Bekleniyor)"]
+                            })
+                            st.session_state.gonderilenler_log = pd.concat([st.session_state.gonderilenler_log, yeni_log], ignore_index=True)
+                            
+                        except Exception as e:
+                            hatali += 1
+                            
+                        progress.progress((i + 1) / len(gonderilecekler))
+                        time.sleep(2) 
+                        
+                    st.success(f"İşlem tamam! {basarili} yeni e-posta gönderildi. {hatali} hata.")
         else:
             st.info("Gönderilecek liste boş. Önce 'Otomatik Müşteri Bulucu' sekmesinden arama yapın.")
 
@@ -358,5 +371,13 @@ Cuma Babacan"""
                     st.error(f"Bağlantı Hatası: {e}. Lütfen Gmail uygulama şifrenizi kontrol edin.")
                     
         if not st.session_state.gelen_yanitlar.empty:
-            st.write("### 📊 Gelen Yanıtların Durumu")
+            st.write("### 📊 Gelen Yanıtlar")
             st.dataframe(st.session_state.gelen_yanitlar, use_container_width=True)
+
+    # --- GİDEN E-POSTA LOGLARI (Sayfanın altında) ---
+    st.divider()
+    st.subheader("📤 Giden E-posta Logları (Kimlere Ne Gönderildi?)")
+    if not st.session_state.gonderilenler_log.empty:
+        st.dataframe(st.session_state.gonderilenler_log.sort_values(by="Tarih", ascending=False), use_container_width=True)
+    else:
+        st.info("Henüz hiç e-posta gönderilmedi.")
