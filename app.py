@@ -24,12 +24,10 @@ if "logged_in" not in st.session_state:
 if not st.session_state.logged_in:
     st.title("🔐 Sisteme Giriş")
     st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
-    
     with st.form("login_form"):
         kullanici_adi = st.text_input("Kullanıcı Adı").strip()
         sifre = st.text_input("Şifre", type="password").strip()
         submit = st.form_submit_button("Giriş Yap")
-        
         if submit:
             if kullanici_adi == "Cuma Babacan" and sifre == "784512":
                 st.session_state.logged_in = True
@@ -51,13 +49,11 @@ DATA_DIR = Path("app_data")
 DATA_DIR.mkdir(exist_ok=True)
 
 def _get_sb():
-    if not SUPABASE_URL:
-        return None
+    if not SUPABASE_URL: return None
     try:
         from supabase import create_client
         return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
-        return None
+    except Exception: return None
 
 _sb = _get_sb()
 
@@ -71,13 +67,10 @@ KOLONLAR = {
 def _kaydet(anahtar, df):
     try:
         df.to_json(DATA_DIR / f"{anahtar}.json", orient="records", force_ascii=False, indent=2)
-    except Exception:
-        pass
+    except Exception: pass
     if _sb:
-        try:
-            _sb.table("app_state").upsert({"key": anahtar, "data": df.to_dict(orient="records")}).execute()
-        except Exception:
-            pass
+        try: _sb.table("app_state").upsert({"key": anahtar, "data": df.to_dict(orient="records")}).execute()
+        except Exception: pass
 
 def _yukle(anahtar):
     kolonlar = KOLONLAR[anahtar]
@@ -86,15 +79,11 @@ def _yukle(anahtar):
             res = _sb.table("app_state").select("data").eq("key", anahtar).execute()
             if res.data and res.data[0].get("data") is not None:
                 return pd.DataFrame(res.data[0]["data"], columns=kolonlar)
-        except Exception:
-            pass
+        except Exception: pass
     path = DATA_DIR / f"{anahtar}.json"
     if path.exists():
-        try:
-            df = pd.read_json(path, orient="records")
-            return df.reindex(columns=kolonlar)
-        except Exception:
-            pass
+        try: return pd.read_json(path, orient="records").reindex(columns=kolonlar)
+        except Exception: pass
     return pd.DataFrame(columns=kolonlar)
 
 def init_state():
@@ -112,28 +101,30 @@ df = st.session_state.musteri_df
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
-# ================= HATA ÇEVİRİ =================
+# ================= GENİŞLETİLMİŞ HATA ÇEVİRİ =================
 hata_sozlugu = {
-    "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele içeriği tanımlayan bir 'alt' metni ekleyin.",
-    "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Başlıkları hiyerarşik sırayla kullanın.",
-    "Elements with role=\"none\" or role=\"presentation\" have conflicts": "Sunum rolü çakışması. Çözüm: Etkileşimli öğelerden role=\"presentation\" etiketini kaldırın.",
-    "Touch targets do not have sufficient size or spacing": "Dokunmatik hedefler çok küçük. Çözüm: Buton boyutlarını en az 48x48 piksel yapın.",
-    "Buttons do not have an accessible name": "Butonların erişilebilir bir adı yok. Çözüm: Buton içine metin ekleyin veya aria-label ile adlandırın.",
-    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin ve arka plan arasındaki kontrastı artırın.",
-    "elements do not have a title": "Iframe (Çerçeve) etiketlerinde başlık eksik. Çözüm: Videolar veya gömülü içerikler için 'title' özelliği ekleyin.",
-    "ARIA input fields do not have accessible names": "Form alanlarının erişilebilir adları yok. Çözüm: Giriş alanlarına 'label' veya 'aria-label' ekleyin.",
-    "Links do not have a discernible name": "Bağlantıların (link) anlaşılır bir adı yok. Çözüm: Sadece ikon olan linklere metin veya 'aria-label' ekleyin.",
-    "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: ARIA etiketlerinin değerlerini standartlara uygun hale getirin.",
-    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: Sayfanın ana içeriğini <main> etiketi içine alın.",
-    "List items": "Liste öğeleri (<li>) yanlış yerde. Çözüm: <li> etiketlerini <ul>, <ol> veya <menu> içine alın.",
-    "role=\"dialog\" or role=\"alertdialog\" do not have accessible names": "Diyalog (açılır pencere) öğelerinin erişilebilir adları yok. Çözüm: Pencerelere 'aria-label' ekleyin."
+    "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele 'alt' metni ekleyin.",
+    "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Hiyerarşik sırayla kullanın.",
+    "Elements with role=\"none\" or role=\"presentation\" have conflicts": "Sunum rolü çakışması. Çözüm: role=\"presentation\" etiketini kaldırın.",
+    "Touch targets do not have sufficient size or spacing": "Dokunmatik hedefler çok küçük. Çözüm: Butonları en az 48x48 piksel yapın.",
+    "Buttons do not have an accessible name": "Butonların adı yok. Çözüm: Butona metin veya aria-label ekleyin.",
+    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin/arka plan kontrastını artırın.",
+    "elements do not have a title": "Iframe başlığı eksik. Çözüm: Gömülü içeriklere 'title' ekleyin.",
+    "ARIA input fields do not have accessible names": "Form alanlarının adı yok. Çözüm: Giriş alanlarına 'label' ekleyin.",
+    "Links do not have a discernible name": "Linklerin anlaşılır adı yok. Çözüm: İkon linklere 'aria-label' ekleyin.",
+    "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: Değerleri standartlara uygun yapın.",
+    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: İçeriği <main> içine alın.",
+    "List items": "Liste öğeleri yanlış yerde. Çözüm: <li> etiketlerini <ul> içine alın.",
+    "role=\"dialog\" or role=\"alertdialog\" do not have accessible names": "Açılır pencerelerin adı yok. Çözüm: 'aria-label' ekleyin.",
+    "<html> element does not have a [lang] attribute": "HTML dil özelliği (lang) eksik. Çözüm: <html lang='tr'> ekleyin.",
+    "[user-scalable=\"no\"]": "Mobilde büyütme engellenmiş. Çözüm: user-scalable=yes yapın.",
+    "Lists do not contain only <li>": "Liste yapısı hatalı. Çözüm: <ul> içinde sadece <li> kullanın."
 }
 
 def hatayi_cevir(hata_ingilizce):
     for key, val in hata_sozlugu.items():
-        if key.lower() in hata_ingilizce.lower():
-            return val
-    return f"{hata_ingilizce} (Çözüm için incelenmeli)"
+        if key.lower() in hata_ingilizce.lower(): return val
+    return f"{hata_ingilizce}"
 
 # ================= SEKMELER =================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -188,15 +179,14 @@ def eposta_bul(url):
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=10)
         
-        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        # Sadece geçerli e-posta formatlarını al (resim uzantılarını tamamen yoksay)
+        email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
         
-        # Sahte/Örnek e-postaları filtreleme listesi
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
         
         for em in emails:
             em_lower = em.lower()
-            # Resim uzantılı veya sahte e-posta ise atla
             if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                 if not any(fake in em_lower for fake in fake_emails):
                     return em
@@ -211,10 +201,8 @@ def eposta_bul(url):
                     if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                         if not any(fake in em_lower for fake in fake_emails):
                             return em
-            except:
-                continue
-    except Exception:
-        pass
+            except: continue
+    except Exception: pass
     return None
 
 # ================= 3. SEKME =================
@@ -223,8 +211,7 @@ with tab3:
     with st.form("tarama_formu"):
         hedef_url = st.text_input("Site Linki")
         if st.form_submit_button("Tara"):
-            if not hedef_url.startswith("http"):
-                hedef_url = "https://" + hedef_url
+            if not hedef_url.startswith("http"): hedef_url = "https://" + hedef_url
             with st.spinner("Taranıyor..."):
                 try:
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
@@ -238,10 +225,8 @@ with tab3:
                         st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
                         st.metric("Kritik Hata", len(failures))
                         st.write("**Türkçe Hata Detayları ve Çözümleri:**")
-                        for hata in failures[:5]:
-                            st.info(hatayi_cevir(hata))
-                except Exception:
-                    st.error("Hata oluştu.")
+                        for hata in failures[:5]: st.info(hatayi_cevir(hata))
+                except Exception: st.error("Hata oluştu.")
 
 # ================= 4. SEKME =================
 with tab4:
@@ -264,9 +249,14 @@ with tab4:
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
 
         if baslat_butonu:
+            # ESKİ VERİYİ KESİN OLARAK SIFIRLA
+            st.session_state.lead_results = pd.DataFrame()
+            persist("lead_results")
+            
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
+                # DAHA AGRESİF KARA LİSTE
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
@@ -276,7 +266,7 @@ with tab4:
                     "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
-                    "sorgulama", "telefonrehberi", "bulucu", "sportcard" # SPORTCARD EKLENDİ
+                    "sorgulama", "telefonrehberi", "bulucu", "sportcard", "yönetim", "otomasyon", "sistem", "panel"
                 ]
 
                 leads = []
@@ -310,7 +300,8 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard"]): continue
+                            # Domain içinde kara liste elemesi (Çok sıkı)
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
@@ -437,8 +428,7 @@ Erişilebilirlik Danışmanı"""
                                 "Talep Edilen Ücret": [tahmini_ucret], "Durum": ["Gönderildi (Yanıt Bekleniyor)"]
                             })
                             st.session_state.gonderilenler_log = pd.concat([st.session_state.gonderilenler_log, yeni_log], ignore_index=True)
-                        except Exception:
-                            hatali += 1
+                        except Exception: hatali += 1
 
                         progress.progress((i + 1) / len(gonderilecekler))
                         time.sleep(2)
@@ -451,7 +441,7 @@ Erişilebilirlik Danışmanı"""
     with col_oku:
         st.subheader("2. Gelen Yanıtları Kontrol Et")
         if st.button("📥 Gelen Kutusunu Tara ve Sınıflandır"):
-            with st.spinner("Gmail'e bağlanılıyor ve yanıtlar okunuyor..."):
+            with st.spinner("Gmail'e bağlanılıyor..."):
                 try:
                     mail = imaplib.IMAP4_SSL("imap.gmail.com")
                     mail.login(GMAIL_ADRESI, GMAIL_SIFRESI)
@@ -492,21 +482,18 @@ Erişilebilirlik Danışmanı"""
                         st.session_state.gelen_yanitlar = pd.DataFrame(yanitlar)
                         persist("gelen_yanitlar")
                         st.success(f"{len(yanitlar)} adet yanıt bulundu ve sınıflandırıldı!")
-                    else:
-                        st.info("Henüz bir yanıt bulunamadı.")
-                except Exception as e:
-                    st.error(f"Bağlantı Hatası: {e}. Lütfen Gmail uygulama şifrenizi kontrol edin.")
+                    else: st.info("Henüz bir yanıt bulunamadı.")
+                except Exception as e: st.error(f"Bağlantı Hatası: {e}.")
 
         if not st.session_state.gelen_yanitlar.empty:
             st.write("### 📊 Gelen Yanıtlar")
             st.dataframe(st.session_state.gelen_yanitlar, use_container_width=True)
 
     st.divider()
-    st.subheader("📤 Giden E-posta Logları (Kimlere Ne Gönderildi?)")
+    st.subheader("📤 Giden E-posta Logları")
     if not st.session_state.gonderilenler_log.empty:
         st.dataframe(st.session_state.gonderilenler_log.sort_values(by="Tarih", ascending=False), use_container_width=True)
-    else:
-        st.info("Henüz hiç e-posta gönderilmedi.")
+    else: st.info("Henüz hiç e-posta gönderilmedi.")
 
 # ================= 6. SEKME: VİTRİN & HAKKIMDA =================
 with tab6:
