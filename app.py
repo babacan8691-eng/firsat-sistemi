@@ -265,21 +265,18 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # REHBER SİTESİ SİNYALİ VEREN TÜM KELİMELER
-                rehber_sinyalleri = [
-                    "bul", "rehber", "katalog", "dizin", "firma", "adres", "portal", 
-                    "platform", "siteler", "mekan", "harita", "ara", "bulucu", "klik",
-                    "tıkla", "prices", "detay", "link", "directory", "guide", "lokasyon",
-                    "yerler", "rehberi", "firmalar", "mekanlar"
-                ]
-                
+                # NİHAİ KARA LİSTE (Platformlar ve Rehberler)
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
-                    "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "tripadvisor", 
+                    "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "katalog", 
                     ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "apple.com", "play.google.com", 
                     "wa.me", "appstore", "dnb", "trendhizmet", "medicom", "muhasebe", "forum",
                     "find.com", "infobel", "doktorum360", "kolayrandevu", "eticaretlink", "adresci",
-                    "hastanesi.com", "siteler.com", "dentalprices", "mobilyacarsisi", "dugunsalonubul"
+                    "hastanesi.com", "siteler.com", "dentalprices", "mobilyacarsisi", "dugunsalonubul",
+                    # GÖRSELDEN GELEN DEV PLATFORMLAR
+                    "obilet", "setur", "agoda", "sporcard", "dugun.com", "aliguradapazari", 
+                    "sehir.net", "doktorsitesi", "vetsaglik", "eksisozluk", "fabco", "relateddigital",
+                    "merkezsaglikgrubu", "urfa.com", "hanecunda", "eticaret", "rekclick", "basitkargo", "kamilkeles"
                 ]
 
                 leads = []
@@ -291,9 +288,9 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # KESİN ÇÖZÜM: "iletişim" kelimesi kaldırıldı, negatif operatörler eklendi
+                    # KESİN ÇÖZÜM: Negatif operatörler ile blog, haber, platform ve rehberleri Google seviyesinde engelliyoruz
                     sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
-                    query = f'{kelime}{sehir_ekle} -inurl:rehber -inurl:katalog -inurl:dizin -inurl:firma -inurl:bul'
+                    query = f'{kelime}{sehir_ekle} iletişim -blog -haber -makale -nedir -nasıl -popüler -yorumlar -fiyatları -rezervasyon -agoda -obilet -setur -sporcard -dugun.com -aliguradapazari -sehir.net -doktorsitesi -vetsaglik -eksisozluk -fabco'
 
                     params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
 
@@ -308,19 +305,17 @@ with tab4:
 
                             if any(x in url.lower() for x in kara_liste): continue
                             
-                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "en iyi", "top 10", "listesi", "rehberi"]
+                            # URL YOLU FİLTRESİ (Dizin siteleri genelde /firma/, /mekan/ kullanır)
+                            if any(path in url.lower() for path in ["/blog/", "/haber/", "/makale/", "/firma/", "/mekan/", "/doktor/", "/rehber/"]): continue
+
+                            # BAŞLIK FİLTRESİ (Blog/Haber/Rehber başlıkları)
+                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "en iyi", "top 10", "listesi", "rehberi", "nedir", "nasıl", "yorumlar", "popüler", "haberleri"]
                             if any(x in title for x in hatali_basliklar): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            domain_adi = domain.split('.')[0]
-                            if any(sinyal in domain_adi for sinyal in rehber_sinyalleri): continue
-
-                            if f"- {domain}" in title or f"| {domain}" in title or f"– {domain}" in title: continue
-                            if domain_adi in title and len(domain_adi) > 5: continue
-
                             if not domain.endswith(('.com.tr', '.com', '.net', '.org')): continue
                             if any(x in domain for x in kara_liste): continue
                             if domain in seen_domains: continue
