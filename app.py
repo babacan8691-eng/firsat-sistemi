@@ -258,7 +258,7 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # Kara listeye odalar, dernekler ve dev markalar eklendi
+                # SON KARA LİSTE GÜNCELLEMESİ (Forum, dizin siteleri, demo linkler eklendi)
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
@@ -270,7 +270,8 @@ with tab4:
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
                     "sorgulama", "telefonrehberi", "bulucu", "sportcard", "sporcard", "yönetim", "otomasyon", "sistem", "panel",
                     "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat",
-                    "firmasehri", "ankaraesnaf", "chicco" # Yeni eklenenler
+                    "firmasehri", "ankaraesnaf", "chicco", 
+                    "forum", "turk.net", "g.co", "adresci", "firmanyo", "iletisimadresleri", "demo.", "dijifa", "bebee", "arvingo", "softbutik" # YENİLER
                 ]
 
                 leads = []
@@ -300,19 +301,17 @@ with tab4:
                             url = r.get("link", "")
                             title = r.get("title", "").lower()
 
-                            # BOZUK SİTELERİ VE İSTENMEYEN BAŞLIKLARI FİLTRELE
                             if any(x in url for x in kara_liste) or any(x in title for x in kara_liste): continue
                             if "index of" in title or "index of" in url: continue
                             if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı", "odası", "derneği", "vakfı"]): continue
                             
-                            # "Application Error" içeren bozuk siteleri atla
                             if any(x in title for x in ["application error", "error", "500", "404", "not found", "forbidden", "erişim engellendi"]): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi"]): continue
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi", "forum", "g.co"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
