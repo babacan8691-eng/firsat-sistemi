@@ -182,7 +182,7 @@ def eposta_bul(url):
         
         # İŞLETME DOĞRULAMA: Sayfada iletişim bilgisi var mı?
         if not any(k in text_lower for k in ["adres", "telefon", "iletişim", "email", "mail"]):
-            return None, False # İşletme değil, çöp site
+            return None, False
             
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
@@ -206,7 +206,7 @@ def eposta_bul(url):
                             return em, True
             except: continue
     except Exception: pass
-    return None, True # E-posta bulamadı ama işletme olabilir (info@domain kullanılacak)
+    return None, True
 
 # ================= 3. SEKME =================
 with tab3:
@@ -265,13 +265,21 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # ARTIK SADECE KESİN ÇÖPLER (Çok kısa liste, gerisini Google ve kod hallediyor)
+                # REHBER SİTESİ SİNYALİ VEREN TÜM KELİMELER
+                rehber_sinyalleri = [
+                    "bul", "rehber", "katalog", "dizin", "firma", "adres", "portal", 
+                    "platform", "siteler", "mekan", "harita", "ara", "bulucu", "klik",
+                    "tıkla", "prices", "detay", "link", "directory", "guide", "lokasyon",
+                    "yerler", "rehberi", "firmalar", "mekanlar"
+                ]
+                
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
-                    "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "katalog", 
-                    "harita", "tripadvisor", ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "apple.com", 
-                    "play.google.com", "wa.me", "appstore", "dnb", "trendhizmet", "medicom", "muhasebe",
-                    "en iyi", "top 10", "yol tarifi", "şube sorgu", "online randevu", "takvim", "forum"
+                    "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "tripadvisor", 
+                    ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "apple.com", "play.google.com", 
+                    "wa.me", "appstore", "dnb", "trendhizmet", "medicom", "muhasebe", "forum",
+                    "find.com", "infobel", "doktorum360", "kolayrandevu", "eticaretlink", "adresci",
+                    "hastanesi.com", "siteler.com", "dentalprices", "mobilyacarsisi", "dugunsalonubul"
                 ]
 
                 leads = []
@@ -283,9 +291,9 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # KESİN ARAMA MANTIĞI: Sadece iletişim sayfası olan (inurl:iletisim) siteleri getir.
+                    # KESİN ÇÖZÜM: "iletişim" kelimesi kaldırıldı, negatif operatörler eklendi
                     sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
-                    query = f'{kelime}{sehir_ekle} inurl:iletisim (site:.com.tr OR site:.com OR site:.net) -inurl:katalog -inurl:rehber -inurl:portal'
+                    query = f'{kelime}{sehir_ekle} -inurl:rehber -inurl:katalog -inurl:dizin -inurl:firma -inurl:bul'
 
                     params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
 
@@ -300,16 +308,19 @@ with tab4:
 
                             if any(x in url.lower() for x in kara_liste): continue
                             
-                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap"]
+                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "en iyi", "top 10", "listesi", "rehberi"]
                             if any(x in title for x in hatali_basliklar): continue
-                            
-                            if any(x in title for x in ["sarı sayfa", "katalog", "firmalar", "rehberi", "listesi"]): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            # WHITELIST: Sadece bu uzantıları kabul et
+                            domain_adi = domain.split('.')[0]
+                            if any(sinyal in domain_adi for sinyal in rehber_sinyalleri): continue
+
+                            if f"- {domain}" in title or f"| {domain}" in title or f"– {domain}" in title: continue
+                            if domain_adi in title and len(domain_adi) > 5: continue
+
                             if not domain.endswith(('.com.tr', '.com', '.net', '.org')): continue
                             if any(x in domain for x in kara_liste): continue
                             if domain in seen_domains: continue
@@ -317,7 +328,6 @@ with tab4:
                             status_text.text(f"📧 {domain} için e-posta aranıyor...")
                             gercek_mail, is_isletme = eposta_bul(f"https://{domain}")
                             
-                            # İşletme doğrulamasından geçemediyse atla
                             if not is_isletme: continue
 
                             hata = 0
