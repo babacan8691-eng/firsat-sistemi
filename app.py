@@ -265,18 +265,20 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # NİHAİ KARA LİSTE (Platformlar ve Rehberler)
+                # MATEMATİKSEL KESİN KARA LİSTE
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "katalog", 
                     ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "apple.com", "play.google.com", 
                     "wa.me", "appstore", "dnb", "trendhizmet", "medicom", "muhasebe", "forum",
+                    # GÖRSELDEN GELEN VE BENZERİ TÜM PLATFORMLAR
                     "find.com", "infobel", "doktorum360", "kolayrandevu", "eticaretlink", "adresci",
                     "hastanesi.com", "siteler.com", "dentalprices", "mobilyacarsisi", "dugunsalonubul",
-                    # GÖRSELDEN GELEN DEV PLATFORMLAR
                     "obilet", "setur", "agoda", "sporcard", "dugun.com", "aliguradapazari", 
                     "sehir.net", "doktorsitesi", "vetsaglik", "eksisozluk", "fabco", "relateddigital",
-                    "merkezsaglikgrubu", "urfa.com", "hanecunda", "eticaret", "rekclick", "basitkargo", "kamilkeles"
+                    "merkezsaglikgrubu", "urfa.com", "hanecunda", "eticaret", "rekclick", "basitkargo", "kamilkeles",
+                    "e-pazarturk", "erzincanisdunyasi", "firmasehri", "oteliletisim", "telefonsorgulama", 
+                    "menu-tr", "bebee", "nobetciveterinerveri"
                 ]
 
                 leads = []
@@ -288,9 +290,9 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # KESİN ÇÖZÜM: Negatif operatörler ile blog, haber, platform ve rehberleri Google seviyesinde engelliyoruz
+                    # SADECE ARAMA KELİMESİ VE ŞEHİR (Google'ın rehber getirmesini engellemek için URL bazlı yasaklar)
                     sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
-                    query = f'{kelime}{sehir_ekle} iletişim -blog -haber -makale -nedir -nasıl -popüler -yorumlar -fiyatları -rezervasyon -agoda -obilet -setur -sporcard -dugun.com -aliguradapazari -sehir.net -doktorsitesi -vetsaglik -eksisozluk -fabco'
+                    query = f'{kelime}{sehir_ekle} (site:.com.tr OR site:.com) -inurl:(firma OR mekan OR rehber OR katalog OR menu OR profil OR adres OR ilan OR sorgu OR platform)'
 
                     params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
 
@@ -305,19 +307,25 @@ with tab4:
 
                             if any(x in url.lower() for x in kara_liste): continue
                             
-                            # URL YOLU FİLTRESİ (Dizin siteleri genelde /firma/, /mekan/ kullanır)
-                            if any(path in url.lower() for path in ["/blog/", "/haber/", "/makale/", "/firma/", "/mekan/", "/doktor/", "/rehber/"]): continue
+                            # URL DİZİN FİLTRESİ (Rehberlerin en büyük göstergesi)
+                            if any(path in url.lower() for path in ["/firma/", "/mekan/", "/rehber/", "/doktor/", "/profil/", "/ilan/", "/menu/", "/sorgu/"]): continue
 
-                            # BAŞLIK FİLTRESİ (Blog/Haber/Rehber başlıkları)
-                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "en iyi", "top 10", "listesi", "rehberi", "nedir", "nasıl", "yorumlar", "popüler", "haberleri"]
+                            # BAŞLIK FİLTRESİ (Rehberlerin kelime oyunları)
+                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "telefon numaraları", "adresleri", "listesi", "rehberi", "portalı", "platformu"]
                             if any(x in title for x in hatali_basliklar): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            if not domain.endswith(('.com.tr', '.com', '.net', '.org')): continue
-                            if any(x in domain for x in kara_liste): continue
+                            # DOMAIN İÇİNDE YASAKLI KELİME VAR MI? (Matematiksel Kesin Çözüm)
+                            domain_adi = domain.split('.')[0]
+                            yasakli_domain_kelimeleri = ["firma", "bul", "rehber", "sorgu", "katalog", "dizin", "portal", "platform", "adres", "menu", "telefon", "profil", "ilan"]
+                            if any(kelime in domain_adi for kelime in yasakli_domain_kelimeleri): continue
+                            
+                            # BAŞLIK SONUNDA KENDİ DOMAIN'İ GEÇİYOR MU? (Rehber taktiği)
+                            if f"- {domain}" in title or f"| {domain}" in title or f"– {domain}" in title: continue
+
                             if domain in seen_domains: continue
 
                             status_text.text(f"📧 {domain} için e-posta aranıyor...")
