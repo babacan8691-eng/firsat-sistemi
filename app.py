@@ -271,7 +271,6 @@ with tab4:
         if arama_modu == "Hedefli Arama (Sektör + Şehir)":
             sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["Tüm Türkiye", "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
             
-            # TÜM SEKTÖRLER OTOMATİK SEÇİLİ GELİYOR
             tum_sektorler = [
                 "klinik", "otel", "emlak", "butik", "restoran", "diş kliniği", 
                 "avukat", "kuaför", "spor salonu", "veteriner", "e-ticaret", 
@@ -281,7 +280,7 @@ with tab4:
             secili_sektorler = st.multiselect(
                 "Hangi Sektörler Taranacak? (İsterseniz çarpıya basıp eleyebilirsiniz)",
                 tum_sektorler,
-                default=tum_sektorler # Hepsi seçili gelir
+                default=tum_sektorler 
             )
             arama_kelimeleri = secili_sektorler
         else:
@@ -296,6 +295,7 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
+                # GÜÇLENDİRİLMİŞ KARA LİSTE
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol",
                     "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360",
@@ -303,7 +303,9 @@ with tab4:
                     "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
                     "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
                     ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
-                    "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform"
+                    "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform",
+                    "apple.com", "play.google.com", "wa.me", "whatsapp", "appstore", "android", "ios",
+                    "kolayrandevu", "sportcard", "etso", "ticaretodasi", "belediyesi"
                 ]
 
                 leads = []
@@ -311,7 +313,6 @@ with tab4:
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # TÜM SEKTÖRLER SEÇİLDİĞİ İÇİN İŞLEM ÇOK UZAMASIN DİYE LİMİT 2'YE DÜŞÜRÜLDÜ
                 limit = 2 
 
                 for idx, kelime in enumerate(arama_kelimeleri):
@@ -351,6 +352,10 @@ with tab4:
                             if not domain_match:
                                 continue
                             domain = domain_match.group(1)
+                            
+                            # Domain içinde de kara liste kontrolü
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi"]):
+                                continue
 
                             if domain in seen_domains:
                                 continue
@@ -641,7 +646,4 @@ with tab6:
                 <p><b>E-posta:</b> babacan.8691@gmail.com</p>
                 <p><b>Hizmet Bölgesi:</b> Türkiye Geneli (Uzaktan Danışmanlık)</p>
             </div>
-        """, unsafe_allow_html=True)
-
-    st.divider()
-    st.success("💡 **Unutmayın:** Erişilebilirlik sadece engelli bireyler için değil, geçici sakatlık yaşayanlar, yaşlılar ve mobil cihaz kullanan herkes için gereklidir. Bu, işletmeniz için bir yasal zorunluluk ve aynı zamanda bir fırsattır.")
+        """, unsafe_allow_html=True
