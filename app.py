@@ -182,20 +182,24 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA (RESİM ENGELLEYİCİ EKLENDİ) =================
+    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=10)
         
-        # Resim dosyalarını filtrelemek için geçerli e-posta deseni
         email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
         emails = re.findall(email_pattern, r.text)
         
-        # Sadece geçerli e-postaları döndür (resim uzantılı olanları atla)
+        # Sahte/Örnek e-postaları filtreleme listesi
+        fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
+        
         for em in emails:
-            if not em.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                return em
+            em_lower = em.lower()
+            # Resim uzantılı veya sahte e-posta ise atla
+            if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                if not any(fake in em_lower for fake in fake_emails):
+                    return em
                 
         for path in ['/iletisim', '/contact', '/iletisim/']:
             contact_url = url.rstrip('/') + path
@@ -203,8 +207,10 @@ def eposta_bul(url):
                 r2 = requests.get(contact_url, headers=headers, timeout=5)
                 emails2 = re.findall(email_pattern, r2.text)
                 for em in emails2:
-                    if not em.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                        return em
+                    em_lower = em.lower()
+                    if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                        if not any(fake in em_lower for fake in fake_emails):
+                            return em
             except:
                 continue
     except Exception:
@@ -270,7 +276,7 @@ with tab4:
                     "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
-                    "sorgulama", "telefonrehberi", "bulucu" # YENİ EKLENENLER
+                    "sorgulama", "telefonrehberi", "bulucu", "sportcard" # SPORTCARD EKLENDİ
                 ]
 
                 leads = []
@@ -304,7 +310,7 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1)
                             
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama"]): continue
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
@@ -504,7 +510,6 @@ Erişilebilirlik Danışmanı"""
 
 # ================= 6. SEKME: VİTRİN & HAKKIMDA =================
 with tab6:
-    # HTML/CSS formatı hataya yol açmaması için güvenli string yapısına alındı
     st.markdown("""
     <style>
     .hero { background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%); padding: 40px; border-radius: 15px; color: white; text-align: center; margin-bottom: 30px; }
