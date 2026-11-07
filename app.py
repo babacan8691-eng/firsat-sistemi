@@ -118,7 +118,7 @@ hata_sozlugu = {
     "role=\"dialog\" or role=\"alertdialog\" do not have accessible names": "Açılır pencerelerin adı yok. Çözüm: 'aria-label' ekleyin.",
     "<html> element does not have a [lang] attribute": "HTML dil özelliği (lang) eksik. Çözüm: <html lang='tr'> ekleyin.",
     "[user-scalable=\"no\"]": "Mobilde büyütme engellenmiş. Çözüm: user-scalable=yes yapın.",
-    "Lists do not contain only <li>": "Liste yapısı hatalı. Çözüm: <ul> içinde sadece <li> kullanın."
+    "Lists do not contain only <li> elements and script supporting elements": "Liste yapısı hatalı. Çözüm: <ul> veya <ol> içinde sadece <li>, <script> ve <template> etiketleri kullanın."
 }
 
 def hatayi_cevir(hata_ingilizce):
@@ -258,27 +258,22 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # NİHAİ VE EN GENİŞ KARA LİSTE (Kurumlar, Rehberler, Bozuk Siteler)
+                # SONSUZA KADAR TÜM ÇÖPÜ ENGELLEYEN NİHAİ KARA LİSTE
                 kara_liste = [
-                    # Sosyal Medya ve Arama Motorları
                     "yandex", "google", "facebook", "instagram", "twitter", "x.com", "linkedin", "pinterest", "tiktok", "youtube",
-                    # E-ticaret Devleri
                     "sahibinden", "trendyol", "hepsiburada", "n11", "gittigidiyor", "amazon", "aliexpress", "getir", "yemeksepeti", "çiçeksepeti",
-                    # Dizin / Portal / Rehber Siteleri
                     "wikipedia", "doktorum360", "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
                     "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor", "doktorasistan",
                     "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr", "firmasehri", "ankaraesnaf",
                     "chicco", "forum", "turk.net", "g.co", "adresci", "firmanyo", "iletisimadresleri", "demo.", "dijifa",
                     "bebee", "arvingo", "softbutik", "scheddy", "yazilim", "saas", "platform", "kolayrandevu",
-                    "find.com", "find", "bulucu", "portal", "dizin", "arama", "search", "lookup", "listele", "firma", "rehberi",
-                    # Resmi Kurumlar / Devlet / Eğitim
+                    "find", "bulucu", "portal", "dizin", "arama", "search", "lookup", "listele", "firma", "rehberi",
                     ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "ibb.istanbul", "kent.edu.tr", "kto.edu.tr",
                     "tim.org.tr", "saygi.tr", "iletisim.com.tr", ".istanbul", "iett", "belediyesi", "valiligi", "bakanligi", "odasi",
-                    # Uygulama Mağazaları ve Kısa Linkler
                     "apple.com", "play.google.com", "wa.me", "whatsapp", "appstore", "android", "ios",
-                    # Büyük Markalar / Kurumsal
                     "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat",
-                    "apple", "samsung", "sony", "lg", "huawei", "xiaomi", "oppo", "vestel", "arcelik", "beko", "turkcell", "vodafone", "turktelekom"
+                    "apple", "samsung", "sony", "lg", "huawei", "xiaomi", "oppo", "vestel", "arcelik", "beko", "turkcell", "vodafone", "turktelekom",
+                    "dnb", "trendhizmet", "medicom", "muhasebe", "giris", "login", "panel", "yonetim", "net.tr", "top 10", "en iyi" # GÖRSELDEKİ HATALAR EKLENDİ
                 ]
 
                 leads = []
@@ -292,11 +287,11 @@ with tab4:
                     
                     if arama_modu == "Hedefli Arama (Sektör + Şehir)":
                         if sehir_input == "Tüm Türkiye":
-                            query = f'{kelime} firma iletişim' 
+                            query = f'{kelime} firma iletişim -site:dnb.com -site:trendhizmet.com -site:firmasehri.com -site:ankaraesnaf.com' 
                         else:
-                            query = f'{kelime} {sehir_input} firma iletişim'
+                            query = f'{kelime} {sehir_input} firma iletişim -site:dnb.com -site:trendhizmet.com -site:firmasehri.com -site:ankaraesnaf.com'
                     else:
-                        query = f'{kelime} firma iletişim'
+                        query = f'{kelime} firma iletişim -site:dnb.com -site:trendhizmet.com -site:firmasehri.com -site:ankaraesnaf.com'
 
                     params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
 
@@ -309,22 +304,19 @@ with tab4:
                             title = r.get("title", "").lower()
                             domain = ""
 
-                            # URL ve Başlık Kara Liste Kontrolü
+                            # Çok Katmanlı Filtreleme
                             if any(x in url.lower() for x in kara_liste) or any(x in title for x in kara_liste): continue
                             
-                            # Bozuk Site / Hata Sayfası Kontrolü (Çok Önemli)
-                            hatali_basliklar = ["index of", "application error", "500 internal", "404 not found", "403 forbidden", "just a moment", "cloudflare", "erişim engellendi", "sayfa bulunamadı"]
+                            hatali_basliklar = ["index of", "application error", "500 internal", "404 not found", "403 forbidden", "just a moment", "cloudflare", "erişim engellendi", "sayfa bulunamadı", "giriş yap", "login"]
                             if any(x in title for x in hatali_basliklar): continue
                             
-                            # Gereksiz rehber kelimeleri
-                            if any(x in title for x in ["sarı sayfa", "katalog", "firmalar", "listesi", "sayfaları", "meclisi", "başkanlığı", "derneği", "vakfı"]): continue
+                            if any(x in title for x in ["sarı sayfa", "katalog", "firmalar", "listesi", "sayfaları", "meclisi", "başkanlığı", "derneği", "vakfı", "en iyi", "top 10"]): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            # Domain Kara Liste Kontrolü (Ekstra Güvenlik)
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi", "forum", "g.co", "iett", "istanbul", "find"]): continue
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi", "forum", "g.co", "iett", "istanbul", "find", "dnb", "trendhizmet", "medicom", "muhasebe", "giris", "login", "panel"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
