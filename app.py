@@ -228,7 +228,6 @@ with tab3:
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
     
-    # ESKİ VERİYİ TEMİZLEME BUTONU (DÖNGÜYÜ KIRAN BUTON)
     col_temizle1, col_temizle2 = st.columns([1, 4])
     with col_temizle1:
         if st.button("🗑️ Listeyi Temizle"):
@@ -253,14 +252,12 @@ with tab4:
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
 
         if baslat_butonu:
-            # YENİ TARAMA BAŞLARKEN ESKİYİ SIFIRLA
             st.session_state.lead_results = pd.DataFrame()
             persist("lead_results")
             
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # EN AGRESİF KARA LİSTE (Audi, Volkswagen vb. eklendi)
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
@@ -271,23 +268,30 @@ with tab4:
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
                     "sorgulama", "telefonrehberi", "bulucu", "sportcard", "sporcard", "yönetim", "otomasyon", "sistem", "panel",
-                    "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat" # OTOMOBİL MARKALARI
+                    "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat"
                 ]
 
                 leads = []
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                limit = 2 
+                
+                # LİMİT ARTIRILDI (Her sektörden 5 site)
+                limit = 5 
 
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
+                    
+                    # site:.com.tr kısıtlaması kaldırıldı, daha geniş arama yapılıyor
                     if arama_modu == "Hedefli Arama (Sektör + Şehir)":
-                        query = f'"{kelime}" iletişim site:.com.tr' if sehir_input == "Tüm Türkiye" else f'"{kelime}" "{sehir_input}" iletişim site:.com.tr'
+                        if sehir_input == "Tüm Türkiye":
+                            query = f'{kelime} firma iletişim' 
+                        else:
+                            query = f'{kelime} {sehir_input} firma iletişim'
                     else:
-                        query = f'{kelime} iletişim site:.com.tr'
+                        query = f'{kelime} firma iletişim'
 
-                    params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 20, "gl": "tr"}
+                    params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
 
                     try:
                         res = GoogleSearch(params).get_dict().get("organic_results", [])
@@ -320,7 +324,8 @@ with tab4:
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
 
-                            if hata < 2: continue
+                            # Hata sayısı filtresi esnetildi (En az 1 hata olsun)
+                            if hata < 1: continue
 
                             status_text.text(f"📧 {domain} için e-posta aranıyor...")
                             gercek_mail = eposta_bul(f"https://{domain}")
