@@ -173,17 +173,11 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA VE İŞLETME DOĞRULAMA =================
+    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=10)
-        text_lower = r.text.lower()
-        
-        # İŞLETME DOĞRULAMA: Sayfada iletişim bilgisi var mı?
-        if not any(k in text_lower for k in ["adres", "telefon", "iletişim", "email", "mail"]):
-            return None, False
-            
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
@@ -192,7 +186,7 @@ def eposta_bul(url):
             em_lower = em.lower()
             if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                 if not any(fake in em_lower for fake in fake_emails):
-                    return em, True
+                    return em
                     
         for path in ['/iletisim', '/contact']:
             contact_url = url.rstrip('/') + path
@@ -203,10 +197,10 @@ def eposta_bul(url):
                     em_lower = em.lower()
                     if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                         if not any(fake in em_lower for fake in fake_emails):
-                            return em, True
+                            return em
             except: continue
     except Exception: pass
-    return None, True
+    return None
 
 # ================= 3. SEKME =================
 with tab3:
@@ -233,7 +227,7 @@ with tab3:
 
 # ================= 4. SEKME =================
 with tab4:
-    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
+    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (Haritalar Modu)")
     
     col_temizle1, col_temizle2 = st.columns([1, 4])
     with col_temizle1:
@@ -265,78 +259,57 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # MATEMATİKSEL KESİN KARA LİSTE
-                kara_liste = [
-                    "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
-                    "wikipedia", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "katalog", 
-                    ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "apple.com", "play.google.com", 
-                    "wa.me", "appstore", "dnb", "trendhizmet", "medicom", "muhasebe", "forum",
-                    # GÖRSELDEN GELEN VE BENZERİ TÜM PLATFORMLAR
-                    "find.com", "infobel", "doktorum360", "kolayrandevu", "eticaretlink", "adresci",
-                    "hastanesi.com", "siteler.com", "dentalprices", "mobilyacarsisi", "dugunsalonubul",
-                    "obilet", "setur", "agoda", "sporcard", "dugun.com", "aliguradapazari", 
-                    "sehir.net", "doktorsitesi", "vetsaglik", "eksisozluk", "fabco", "relateddigital",
-                    "merkezsaglikgrubu", "urfa.com", "hanecunda", "eticaret", "rekclick", "basitkargo", "kamilkeles",
-                    "e-pazarturk", "erzincanisdunyasi", "firmasehri", "oteliletisim", "telefonsorgulama", 
-                    "menu-tr", "bebee", "nobetciveterinerveri"
-                ]
-
                 leads = []
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                limit = 5 
+                limit = 10 # Haritalar modunda her aramadan 10 işletme çekeceğiz
 
                 for idx, kelime in enumerate(arama_kelimeleri):
-                    status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
+                    status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # SADECE ARAMA KELİMESİ VE ŞEHİR (Google'ın rehber getirmesini engellemek için URL bazlı yasaklar)
                     sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
-                    query = f'{kelime}{sehir_ekle} (site:.com.tr OR site:.com) -inurl:(firma OR mekan OR rehber OR katalog OR menu OR profil OR adres OR ilan OR sorgu OR platform)'
+                    query = f'{kelime}{sehir_ekle}'
 
-                    params = {"engine": "google", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "num": 30, "gl": "tr"}
+                    # DİKKAT: engine="google_maps" kullanıyoruz. Bu, sadece işletmeleri getirir.
+                    params = {
+                        "engine": "google_maps", 
+                        "q": query, 
+                        "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
+                        "hl": "tr"
+                    }
 
                     try:
-                        res = GoogleSearch(params).get_dict().get("organic_results", [])
+                        res = GoogleSearch(params).get_dict()
+                        local_results = res.get("local_results", [])
+                        
                         count = 0
-                        for r in res:
+                        for place in local_results:
                             if count >= limit: break
-                            url = r.get("link", "")
-                            title = r.get("title", "").lower()
-                            domain = ""
-
-                            if any(x in url.lower() for x in kara_liste): continue
                             
-                            # URL DİZİN FİLTRESİ (Rehberlerin en büyük göstergesi)
-                            if any(path in url.lower() for path in ["/firma/", "/mekan/", "/rehber/", "/doktor/", "/profil/", "/ilan/", "/menu/", "/sorgu/"]): continue
-
-                            # BAŞLIK FİLTRESİ (Rehberlerin kelime oyunları)
-                            hatali_basliklar = ["index of", "application error", "404", "not found", "forbidden", "cloudflare", "sayfa bulunamadı", "login", "giriş yap", "firma detay", "firma bilgileri", "telefon numaraları", "adresleri", "listesi", "rehberi", "portalı", "platformu"]
-                            if any(x in title for x in hatali_basliklar): continue
-
-                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+                            # Sadece web sitesi olan işletmeleri al
+                            website = place.get("website", "")
+                            if not website: continue
+                            
+                            title = place.get("title", "").lower()
+                            
+                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            # DOMAIN İÇİNDE YASAKLI KELİME VAR MI? (Matematiksel Kesin Çözüm)
-                            domain_adi = domain.split('.')[0]
-                            yasakli_domain_kelimeleri = ["firma", "bul", "rehber", "sorgu", "katalog", "dizin", "portal", "platform", "adres", "menu", "telefon", "profil", "ilan"]
-                            if any(kelime in domain_adi for kelime in yasakli_domain_kelimeleri): continue
-                            
-                            # BAŞLIK SONUNDA KENDİ DOMAIN'İ GEÇİYOR MU? (Rehber taktiği)
-                            if f"- {domain}" in title or f"| {domain}" in title or f"– {domain}" in title: continue
-
                             if domain in seen_domains: continue
 
                             status_text.text(f"📧 {domain} için e-posta aranıyor...")
-                            gercek_mail, is_isletme = eposta_bul(f"https://{domain}")
+                            mail = eposta_bul(website)
                             
-                            if not is_isletme: continue
+                            # E-posta bulunamazsa info@domain kullan
+                            if not mail: 
+                                mail = f"info@{domain}"
 
                             hata = 0
                             hata_detaylari = "Erişilebilirlik eksiklikleri"
                             try:
-                                api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
+                                api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                                 rr = requests.get(api, timeout=20)
                                 if rr.status_code == 200:
                                     audits = rr.json()['lighthouseResult']['audits']
@@ -345,19 +318,21 @@ with tab4:
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
 
-                            if hata < 1: continue
+                            # 0 hatası olanı da alalım, belki tasarımı eskidir
+                            # if hata < 1: continue 
 
-                            mail = gercek_mail if gercek_mail else f"info@{domain}"
                             tahmini_ucret = 1500 + (hata * 200)
 
                             leads.append({
-                                "Sektör": kelime, "Şirket": r.get("title", domain)[:30], "Domain": domain, "Hata": hata,
+                                "Sektör": kelime, "Şirket": place.get("title", domain)[:30], "Domain": domain, "Hata": hata,
                                 "Tahmini Ücret (TL)": tahmini_ucret, "Hata Detayı (TR)": hata_detaylari, "E-posta": mail,
                                 "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
                             })
                             seen_domains.add(domain)
                             count += 1
-                    except Exception: pass
+                    except Exception as e: 
+                        print(e)
+                        pass
                     progress_bar.progress((idx + 1) / len(arama_kelimeleri))
 
                 status_text.text("✅ Tarama tamamlandı!")
@@ -365,7 +340,7 @@ with tab4:
                 if leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
-                    st.success(f"Sistem **{len(leads)}** adet site buldu.")
+                    st.success(f"Sistem **{len(leads)}** adet gerçek işletme buldu.")
                 else:
                     st.warning("Uygun site bulunamadı.")
 
