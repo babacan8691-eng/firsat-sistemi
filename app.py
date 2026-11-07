@@ -115,12 +115,13 @@ def hatayi_cevir(hata_ingilizce):
     return f"{hata_ingilizce} (Çözüm için incelenmeli)"
 
 # ================= SEKMELER =================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Genel Bakış",
     "👥 Müşteri Yönetimi",
     "🔍 Gerçek Site Tarayıcı",
     "🤖 Otomatik Müşteri Bulucu",
-    "📧 E-posta Otomasyonu & Loglar"
+    "📧 E-posta Otomasyonu & Loglar",
+    "🌟 Vitrin & Hakkımda"
 ])
 
 # ================= 1. SEKME =================
@@ -384,10 +385,8 @@ with tab5:
                         msg = MIMEMultipart()
                         msg['From'] = GMAIL_ADRESI
                         msg['To'] = alici
-                        # Spam filtrelerine takılmamak için merak uyandıran başlık
                         msg['Subject'] = f"Dikkat: {site} sitenizde {hata_sayisi} kritik hata bulundu"
 
-                        # EMPATİ VE ACİLİYET ODAKLI İKNA ŞABLONU
                         body = f"""Merhaba {sirket_adi} Yetkilisi,
 
 Ben Cuma Babacan. Kendim de bir engelli bireyim ve engelli bireylerin web sitelerine sorunsuz erişebilmesi için bir erişilebilirlik denetim sistemi geliştirdim.
@@ -458,7 +457,6 @@ Erişilebilirlik Danışmanı"""
                     mail_ids = messages[0].split()[-20:]
 
                     yanitlar = []
-                    # "Evet" yerine artık "raporu gönder" kelimesini de arıyoruz
                     olumlu_kelimeler = ["evet", "raporu gönder", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
                     olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil", "spam"]
 
@@ -515,3 +513,69 @@ Erişilebilirlik Danışmanı"""
         )
     else:
         st.info("Henüz hiç e-posta gönderilmedi.")
+
+# ================= 6. SEKME: VİTRİN & HAKKIMDA =================
+with tab6:
+    # Streamlit içinde HTML/CSS kullanarak daha şık bir görünüm elde ediyoruz
+    st.markdown("""
+        <style>
+        .hero { background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%); padding: 40px; border-radius: 15px; color: white; text-align: center; margin-bottom: 30px; }
+        .hero h1 { font-size: 40px; margin-bottom: 10px; }
+        .hero p { font-size: 18px; font-weight: 300; }
+        .card { background-color: #f9f9f9; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; color: #333; }
+        .card h3 { margin-top: 0; color: #1f4037; }
+        .highlight { color: #00C853; font-weight: bold; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Hero Alanı
+    st.markdown("""
+        <div class="hero">
+            <h1>♿ Engelsiz Web, Erişilebilir Gelecek</h1>
+            <p>Engelli bir birey olarak, kimsenin geride kalmadığı bir dijital dünya için çalışıyorum.</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    col_v1, col_v2 = st.columns(2)
+
+    with col_v1:
+        st.markdown("""
+            <div class="card">
+                <h3>👋 Ben Kimim?</h3>
+                <p>Merhaba, ben <b>Cuma Babacan</b>. Kendim de bir engelli bireyim ve internetin herkes için eşit derecede erişilebilir olması gerektiğine inanıyorum.</p>
+                <p>İşletmelerin web sitelerini engelli bireylerin (görme, işitme, ortopedik engelliler) rahatça kullanabilmesi için denetliyorum. Sadece bir hizmet sunmuyorum; aynı zamanda bir sosyal sorumluluk projesini yürütüyorum.</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+            <div class="card">
+                <h3>🛠️ Ne Yapıyorum?</h3>
+                <ul>
+                    <li><b>Erişilebilirlik Denetimi:</b> Sitenizdeki engelleri tespit ediyorum.</li>
+                    <li><b>Yasal Uyum Danışmanlığı:</b> 2025 Erişilebilirlik Genelgesi'ne uyum sağlamanıza yardımcı oluyorum.</li>
+                    <li><b>SEO ve Trafik Artışı:</b> Erişilebilir siteler Google tarafından daha üst sıralarda gösterilir, bu da size daha fazla müşteri getirir.</li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col_v2:
+        st.markdown("""
+            <div class="card">
+                <h3>📊 Neden Bana Güvenmelisiniz?</h3>
+                <p>Çünkü bu işi <b>yaşayarak</b> yapıyorum.</p>
+                <p>Kendi geliştirdiğim bu panel sayesinde saniyeler içinde sitenizin taramasını yapıp, size özel bir rapor çıkarıyorum.</p>
+                <p>Müşterilerime sadece "hata listesi" değil, o hataların <b>Türkçe çözüm yollarını</b> ve nasıl düzeltileceğini de sunuyorum. <br><br><i>(İşte bu sistem, kendi sitemi %100 uyumlu hale getirmemi sağladı.)</i></p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("""
+            <div class="card">
+                <h3>📞 İletişime Geçin</h3>
+                <p>Web sitenizin engelli bireyler için uygun olup olmadığını ücretsiz öğrenmek ister misiniz?</p>
+                <p><b>E-posta:</b> babacan.8691@gmail.com</p>
+                <p><b>Hizmet Bölgesi:</b> Türkiye Geneli (Uzaktan Danışmanlık)</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+    st.success("💡 **Unutmayın:** Erişilebilirlik sadece engelli bireyler için değil, geçici sakatlık yaşayanlar, yaşlılar ve mobil cihaz kullanan herkes için gereklidir. Bu, işletmeniz için bir yasal zorunluluk ve aynı zamanda bir fırsattır.")
