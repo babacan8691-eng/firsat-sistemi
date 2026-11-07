@@ -26,12 +26,11 @@ if not st.session_state.logged_in:
     st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
     
     with st.form("login_form"):
-        kullanici_adi = st.text_input("Kullanıcı Adı").strip() # .strip() boşlukları temizler
+        kullanici_adi = st.text_input("Kullanıcı Adı").strip()
         sifre = st.text_input("Şifre", type="password").strip()
         submit = st.form_submit_button("Giriş Yap")
         
         if submit:
-            # Değişkenlere atayarak kontrol ediyoruz
             DOGRU_KULLANICI = "Cuma Babacan"
             DOGRU_SIFRE = "784512"
             
@@ -40,11 +39,10 @@ if not st.session_state.logged_in:
                 st.rerun()
             else:
                 st.error("Hatalı kullanıcı adı veya şifre! (Lütfen büyük/küçük harf ve boşluklara dikkat edin)")
-    st.stop()  # Giriş yapılmadıysa kodun devamını çalıştırma
+    st.stop()
 
 st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
 
-# Çıkış Yap Butonu (Sağ üst köşe için)
 if st.sidebar.button("Çıkış Yap"):
     st.session_state.logged_in = False
     st.rerun()
@@ -259,133 +257,163 @@ with tab3:
                         for hata in failures[:5]:
                             st.info(hatayi_cevir(hata))
                 except Exception:
-                    st.error("Hata oluştu.")
-
-# ================= 4. SEKME =================
+                    st.error("Hata oluştu.") # ================= 4. SEKME =================
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
-    hedef_sektorler = ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat"]
-
+    
+    # KULLANICI SEÇİMİ: HEDEFLİ VEYA GENEL ARAMA
+    arama_modu = st.radio(
+        "Nasıl Arama Yapmak İstersiniz?", 
+        ["Hedefli Arama (Sektör + Şehir)", "Genel Arama (Serbest Metin)"],
+        horizontal=True
+    )
+    
     with st.form("otomatik_avci"):
-        sehir_input = st.selectbox("Hangi Şehirde Aransın?",
-                                   ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
+        if arama_modu == "Hedefli Arama (Sektör + Şehir)":
+            sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["Tüm Türkiye", "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
+            
+            # Çoklu sektör seçimi eklendi
+            secili_sektorler = st.multiselect(
+                "Hangi Sektörler Taranacak?",
+                ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat", "kuaför", "spor salonu", "veteriner", "e-ticaret"],
+                default=["klinik", "otel", "emlak", "butik"]
+            )
+            arama_kelimeleri = secili_sektorler
+        else:
+            st.info("Genel arama yaparken şehir veya sektör sınırı yoktur. Aklınıza gelen her şeyi yazabilirsiniz. (Örn: 'İstanbul kuaför', 'e-ticaret sitesi' vb.)")
+            serbest_metin = st.text_input("Aramak istediğiniz kelime veya cümle")
+            sehir_input = "" # Genel aramada şehir değişkenini boş bırakıyoruz
+            arama_kelimeleri = [serbest_metin] if serbest_metin else []
+            
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
 
         if baslat_butonu:
-            arama_sehir = sehir_input
-
-            kara_liste = [
-                "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol",
-                "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360",
-                "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
-                "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
-                "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
-                ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
-                "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform"
-            ]
-
-            leads = []
-            seen_domains = set()
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            limit = 3
-
-            for idx, sek in enumerate(hedef_sektorler):
-                status_text.text(f"🔍 '{sek}' sektörü taranıyor... ({idx+1}/{len(hedef_sektorler)})")
-
-                query = f'"{sek}" "{arama_sehir}" iletişim site:.com.tr'
-                params = {
-                    "engine": "google", "q": query,
-                    "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c",
-                    "num": 20, "gl": "tr"
-                }
-
-                try:
-                    res = GoogleSearch(params).get_dict().get("organic_results", [])
-                    count = 0
-                    for r in res:
-                        if count >= limit:
-                            break
-                        url = r.get("link", "")
-                        title = r.get("title", "").lower()
-
-                        if any(x in url for x in kara_liste) or any(x in title for x in kara_liste):
-                            continue
-                        if "index of" in title or "index of" in url:
-                            continue
-                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı"]):
-                            continue
-
-                        domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
-                        if not domain_match:
-                            continue
-                        domain = domain_match.group(1)
-
-                        if domain in seen_domains:
-                            continue
-
-                        hata = 0
-                        hata_detaylari = "Erişilebilirlik eksiklikleri"
-                        try:
-                            api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                            rr = requests.get(api, timeout=20)
-                            if rr.status_code == 200:
-                                audits = rr.json()['lighthouseResult']['audits']
-                                failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                                hata = len(failures)
-                                if failures:
-                                    hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
-                        except Exception:
-                            pass
-
-                        if hata < 2:
-                            continue
-
-                        status_text.text(f"📧 {domain} için e-posta aranıyor...")
-                        gercek_mail = eposta_bul(f"https://{domain}")
-                        mail = gercek_mail if gercek_mail else f"info@{domain}"
-                        
-                        tahmini_ucret = 1500 + (hata * 200)
-
-                        leads.append({
-                            "Sektör": sek,
-                            "Şirket": r.get("title", domain)[:30],
-                            "Domain": domain,
-                            "Hata": hata,
-                            "Tahmini Ücret (TL)": tahmini_ucret,
-                            "Hata Detayı (TR)": hata_detaylari,
-                            "E-posta": mail,
-                            "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
-                        })
-
-                        seen_domains.add(domain)
-                        count += 1
-                except Exception:
-                    pass
-                progress_bar.progress((idx + 1) / len(hedef_sektorler))
-
-            status_text.text("✅ Tarama tamamlandı!")
-            time.sleep(1)
-
-            if leads:
-                st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
-                persist("lead_results")
-                st.success(f"Sistem **{len(leads)}** adet site buldu.")
+            if not arama_kelimeleri:
+                st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                st.warning("Uygun site bulunamadı.")
+                kara_liste = [
+                    "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol",
+                    "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360",
+                    "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
+                    "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
+                    "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
+                    ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
+                    "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform"
+                ]
+
+                leads = []
+                seen_domains = set()
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                limit = 3 # Her arama kelimesi için max 3 site bul (hız için)
+
+                for idx, kelime in enumerate(arama_kelimeleri):
+                    status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
+
+                    # Sorgu Mantığı
+                    if arama_modu == "Hedefli Arama (Sektör + Şehir)":
+                        if sehir_input == "Tüm Türkiye":
+                            query = f'"{kelime}" iletişim site:.com.tr'
+                        else:
+                            query = f'"{kelime}" "{sehir_input}" iletişim site:.com.tr'
+                    else:
+                        # Serbest arama sorgusu
+                        query = f'{kelime} iletişim site:.com.tr'
+
+                    params = {
+                        "engine": "google", "q": query,
+                        "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c",
+                        "num": 20, "gl": "tr"
+                    }
+
+                    try:
+                        res = GoogleSearch(params).get_dict().get("organic_results", [])
+                        count = 0
+                        for r in res:
+                            if count >= limit:
+                                break
+                            url = r.get("link", "")
+                            title = r.get("title", "").lower()
+
+                            if any(x in url for x in kara_liste) or any(x in title for x in kara_liste):
+                                continue
+                            if "index of" in title or "index of" in url:
+                                continue
+                            if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı"]):
+                                continue
+
+                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
+                            if not domain_match:
+                                continue
+                            domain = domain_match.group(1)
+
+                            if domain in seen_domains:
+                                continue
+
+                            hata = 0
+                            hata_detaylari = "Erişilebilirlik eksiklikleri"
+                            try:
+                                api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
+                                rr = requests.get(api, timeout=20)
+                                if rr.status_code == 200:
+                                    audits = rr.json()['lighthouseResult']['audits']
+                                    failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
+                                    hata = len(failures)
+                                    if failures:
+                                        hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
+                            except Exception:
+                                pass
+
+                            if hata < 2:
+                                continue
+
+                            status_text.text(f"📧 {domain} için e-posta aranıyor...")
+                            gercek_mail = eposta_bul(f"https://{domain}")
+                            mail = gercek_mail if gercek_mail else f"info@{domain}"
+                            
+                            tahmini_ucret = 1500 + (hata * 200)
+
+                            leads.append({
+                                "Sektör": kelime,
+                                "Şirket": r.get("title", domain)[:30],
+                                "Domain": domain,
+                                "Hata": hata,
+                                "Tahmini Ücret (TL)": tahmini_ucret,
+                                "Hata Detayı (TR)": hata_detaylari,
+                                "E-posta": mail,
+                                "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
+                            })
+
+                            seen_domains.add(domain)
+                            count += 1
+                    except Exception:
+                        pass
+                    progress_bar.progress((idx + 1) / len(arama_kelimeleri))
+
+                status_text.text("✅ Tarama tamamlandı!")
+                time.sleep(1)
+
+                if leads:
+                    st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
+                    persist("lead_results")
+                    st.success(f"Sistem **{len(leads)}** adet site buldu.")
+                else:
+                    st.warning("Uygun site bulunamadı.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Kart Görünümü)")
         for idx, row in st.session_state.lead_results.iterrows():
             durum_ikon = "🔥" if row['Durum'] == "🔥 Sıcak" else "🟡"
             with st.expander(f"{durum_ikon} {row['Şirket']} - {row['Domain']} ({row['Hata']} Hata)"):
-                st.write(f"**Sektör:** {row['Sektör']}")
+                st.write(f"**Sektör/Kelime:** {row['Sektör']}")
                 st.write(f"**E-posta:** {row['E-posta']}")
                 st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
-                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}") # ================= 5. SEKME =================
+                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}")
+
+# ================= 5. SEKME =================
 with tab5:
     st.header("📧 E-posta Gönderimi ve Giden Kutusu Logları")
-    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı. Gönderilen mailler, spam'e düşmemesi için 2 saniye aralıklarla yollanır.")
+    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı.")
 
     col_gonder, col_oku = st.columns(2)
 
