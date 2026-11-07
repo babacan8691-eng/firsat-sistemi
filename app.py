@@ -258,31 +258,30 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
+                # Kara listeye odalar, dernekler ve dev markalar eklendi
                 kara_liste = [
                     "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
                     "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
                     "com.com", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "firmalar", "katalog", 
                     "harita", "eksisozluk", "tripadvisor", "doktorasistan", "tatilnokta", "menu-tr", "otelz", 
-                    "etstur", "tatilbudur", "istanbul.net.tr", ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", 
+                    "etstur", "tatilbudur", "istanbul.net.tr", ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "ibb.istanbul", 
                     "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
                     "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
                     "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
                     "sorgulama", "telefonrehberi", "bulucu", "sportcard", "sporcard", "yönetim", "otomasyon", "sistem", "panel",
-                    "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat"
+                    "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat",
+                    "firmasehri", "ankaraesnaf", "chicco" # Yeni eklenenler
                 ]
 
                 leads = []
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                
-                # LİMİT ARTIRILDI (Her sektörden 5 site)
                 limit = 5 
 
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # site:.com.tr kısıtlaması kaldırıldı, daha geniş arama yapılıyor
                     if arama_modu == "Hedefli Arama (Sektör + Şehir)":
                         if sehir_input == "Tüm Türkiye":
                             query = f'{kelime} firma iletişim' 
@@ -301,9 +300,13 @@ with tab4:
                             url = r.get("link", "")
                             title = r.get("title", "").lower()
 
+                            # BOZUK SİTELERİ VE İSTENMEYEN BAŞLIKLARI FİLTRELE
                             if any(x in url for x in kara_liste) or any(x in title for x in kara_liste): continue
                             if "index of" in title or "index of" in url: continue
-                            if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı"]): continue
+                            if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı", "odası", "derneği", "vakfı"]): continue
+                            
+                            # "Application Error" içeren bozuk siteleri atla
+                            if any(x in title for x in ["application error", "error", "500", "404", "not found", "forbidden", "erişim engellendi"]): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
@@ -324,7 +327,6 @@ with tab4:
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
 
-                            # Hata sayısı filtresi esnetildi (En az 1 hata olsun)
                             if hata < 1: continue
 
                             status_text.text(f"📧 {domain} için e-posta aranıyor...")
