@@ -305,7 +305,7 @@ with tab4:
                     ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
                     "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform",
                     "apple.com", "play.google.com", "wa.me", "whatsapp", "appstore", "android", "ios",
-                    "kolayrandevu", "sportcard", "etso", "ticaretodasi", "belediyesi"
+                    "kolayrandevu", "etso", "ticaretodasi", "belediyesi"
                 ]
 
                 leads = []
@@ -590,7 +590,9 @@ Erişilebilirlik Danışmanı"""
 
 # ================= 6. SEKME: VİTRİN & HAKKIMDA =================
 with tab6:
-    st.markdown("""
+    # HATA DÜZELTİLDİ: Tırnak ve parantezler güvenli formata alındı
+    st.markdown(
+        """
         <style>
         .hero { background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%); padding: 40px; border-radius: 15px; color: white; text-align: center; margin-bottom: 30px; }
         .hero h1 { font-size: 40px; margin-bottom: 10px; }
@@ -598,27 +600,36 @@ with tab6:
         .card { background-color: #f9f9f9; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; color: #333; }
         .card h3 { margin-top: 0; color: #1f4037; }
         </style>
-    """, unsafe_allow_html=True)
+        """, 
+        unsafe_allow_html=True
+    )
 
-    st.markdown("""
+    st.markdown(
+        """
         <div class="hero">
             <h1>♿ Engelsiz Web, Erişilebilir Gelecek</h1>
             <p>Engelli bir birey olarak, kimsenin geride kalmadığı bir dijital dünya için çalışıyorum.</p>
         </div>
-    """, unsafe_allow_html=True)
+        """, 
+        unsafe_allow_html=True
+    )
 
     col_v1, col_v2 = st.columns(2)
 
     with col_v1:
-        st.markdown("""
+        st.markdown(
+            """
             <div class="card">
                 <h3>👋 Ben Kimim?</h3>
                 <p>Merhaba, ben <b>Cuma Babacan</b>. Kendim de bir engelli bireyim ve internetin herkes için eşit derecede erişilebilir olması gerektiğine inanıyorum.</p>
                 <p>İşletmelerin web sitelerini engelli bireylerin (görme, işitme, ortopedik engelliler) rahatça kullanabilmesi için denetliyorum. Sadece bir hizmet sunmuyorum; aynı zamanda bir sosyal sorumluluk projesini yürütüyorum.</p>
             </div>
-        """, unsafe_allow_html=True)
+            """, 
+            unsafe_allow_html=True
+        )
 
-        st.markdown("""
+        st.markdown(
+            """
             <div class="card">
                 <h3>🛠️ Ne Yapıyorum?</h3>
                 <ul>
@@ -627,23 +638,25 @@ with tab6:
                     <li><b>SEO ve Trafik Artışı:</b> Erişilebilir siteler Google tarafından daha üst sıralarda gösterilir, bu da size daha fazla müşteri getirir.</li>
                 </ul>
             </div>
-        """, unsafe_allow_html=True)
+            """, 
+            unsafe_allow_html=True
+        )
 
     with col_v2:
-        st.markdown("""
+        st.markdown(
+            """
             <div class="card">
                 <h3>📊 Neden Bana Güvenmelisiniz?</h3>
                 <p>Çünkü bu işi <b>yaşayarak</b> yapıyorum.</p>
                 <p>Kendi geliştirdiğim bu panel sayesinde saniyeler içinde sitenizin taramasını yapıp, size özel bir rapor çıkarıyorum.</p>
                 <p>Müşterilerime sadece "hata listesi" değil, o hataların <b>Türkçe çözüm yollarını</b> ve nasıl düzeltileceğini de sunuyorum. <br><br><i>(İşte bu sistem, kendi sitemi %100 uyumlu hale getirmemi sağladı.)</i></p>
             </div>
-        """, unsafe_allow_html=True)
+            """, 
+            unsafe_allow_html=True
+        )
 
-        st.markdown("""
+        st.markdown(
+            """
             <div class="card">
                 <h3>📞 İletişime Geçin</h3>
-                <p>Web sitenizin engelli bireyler için uygun olup olmadığını ücretsiz öğrenmek ister misiniz?</p>
-                <p><b>E-posta:</b> babacan.8691@gmail.com</p>
-                <p><b>Hizmet Bölgesi:</b> Türkiye Geneli (Uzaktan Danışmanlık)</p>
-            </div>
-        """, unsafe_allow_html=True
+                <p>Web sitenizin engelli bireyler için uygun olup olmadığı
