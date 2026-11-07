@@ -46,13 +46,11 @@ KOLONLAR = {
 }
 
 def _kaydet(anahtar, df):
-    # 1) Yerel JSON (her zaman çalışır – kalıcı)
     try:
         df.to_json(DATA_DIR / f"{anahtar}.json", orient="records",
                    force_ascii=False, indent=2)
     except Exception:
         pass
-    # 2) Supabase (SUPABASE_URL verilmişse)
     if _sb:
         try:
             _sb.table("app_state").upsert(
@@ -174,7 +172,31 @@ with tab2:
             )
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= 3. SEKME =================
+    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+def eposta_bul(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        # Ana sayfayı dene
+        r = requests.get(url, headers=headers, timeout=10)
+        emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r.text)
+        if emails:
+            return emails[0]
+        
+        # İletişim sayfasını dene
+        for path in ['/iletisim', '/contact', '/iletisim/']:
+            contact_url = url.rstrip('/') + path
+            try:
+                r2 = requests.get(contact_url, headers=headers, timeout=5)
+                emails2 = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r2.text)
+                if emails2:
+                    return emails2[0]
+            except:
+                continue
+    except Exception:
+        pass
+    return None
+
+# ================= 3. SEKME =================
 with tab3:
     st.header("Gerçek Erişilebilirlik Tarayıcı")
     with st.form("tarama_formu"):
@@ -214,14 +236,15 @@ with tab4:
         if baslat_butonu:
             arama_sehir = sehir_input
 
+            # GÜNCELLENMİŞ KARA LİSTE (Belediyeler, SaaS, Dizinler eklendi)
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol",
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360",
                 "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
                 "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
                 "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
-                ".gov.tr", ".edu.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
-                "tim.org.tr", "saygi.tr", "iletisim.com.tr"
+                ".gov.tr", ".edu.tr", ".bel.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr",
+                "tim.org.tr", "saygi.tr", "iletisim.com.tr", "scheddy", "yazilim", "saas", "platform"
             ]
 
             leads = []
@@ -249,7 +272,10 @@ with tab4:
                         url = r.get("link", "")
                         title = r.get("title", "").lower()
 
-                        if any(x in url for x in kara_liste):
+                        # Çöp veri ve istenmeyen site filtreleri
+                        if any(x in url for x in kara_liste) or any(x in title for x in kara_liste):
+                            continue
+                        if "index of" in title or "index of" in url:
                             continue
                         if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı"]):
                             continue
@@ -279,7 +305,11 @@ with tab4:
                         if hata < 2:
                             continue
 
-                        mail = f"info@{domain}"
+                        # GERÇEK E-POSTA BULMA MANTIĞI
+                        status_text.text(f"📧 {domain} için e-posta aranıyor...")
+                        gercek_mail = eposta_bul(f"https://{domain}")
+                        mail = gercek_mail if gercek_mail else f"info@{domain}" # Bulamazsa tahmin et
+                        
                         tahmini_ucret = 1500 + (hata * 200)
 
                         leads.append({
@@ -309,8 +339,16 @@ with tab4:
             else:
                 st.warning("Uygun site bulunamadı.")
 
+    # MOBİL UYUMLU KART TASARIMI
     if not st.session_state.lead_results.empty:
-        st.dataframe(st.session_state.lead_results, use_container_width=True)
+        st.write("### 📋 Bulunan Müşteri Adayları (Kart Görünümü)")
+        for idx, row in st.session_state.lead_results.iterrows():
+            durum_ikon = "🔥" if row['Durum'] == "🔥 Sıcak" else "🟡"
+            with st.expander(f"{durum_ikon} {row['Şirket']} - {row['Domain']} ({row['Hata']} Hata)"):
+                st.write(f"**Sektör:** {row['Sektör']}")
+                st.write(f"**E-posta:** {row['E-posta']}")
+                st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
+                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}")
 
 # ================= 5. SEKME =================
 with tab5:
@@ -338,6 +376,7 @@ with tab5:
                     for i, row in gonderilecekler.iterrows():
                         alici = row['E-posta']
                         site = row['Domain']
+                        sirket_adi = row['Şirket']
                         hata_sayisi = row['Hata']
                         tahmini_ucret = row['Tahmini Ücret (TL)']
                         hata_detayi = row.get('Hata Detayı (TR)', 'çeşitli sorunlar')
@@ -347,7 +386,8 @@ with tab5:
                         msg['To'] = alici
                         msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
 
-                        body = f"""Merhaba,
+                        # KİŞİSELLEŞTİRİLMİŞ E-POSTA METNİ
+                        body = f"""Merhaba {sirket_adi} Yetkilisi,
 
 {site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
 
