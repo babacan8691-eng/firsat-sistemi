@@ -261,7 +261,6 @@ with tab3:
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
     
-    # KULLANICI SEÇİMİ: HEDEFLİ VEYA GENEL ARAMA
     arama_modu = st.radio(
         "Nasıl Arama Yapmak İstersiniz?", 
         ["Hedefli Arama (Sektör + Şehir)", "Genel Arama (Serbest Metin)"],
@@ -272,17 +271,23 @@ with tab4:
         if arama_modu == "Hedefli Arama (Sektör + Şehir)":
             sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["Tüm Türkiye", "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
             
-            # Çoklu sektör seçimi eklendi
+            # TÜM SEKTÖRLER OTOMATİK SEÇİLİ GELİYOR
+            tum_sektorler = [
+                "klinik", "otel", "emlak", "butik", "restoran", "diş kliniği", 
+                "avukat", "kuaför", "spor salonu", "veteriner", "e-ticaret", 
+                "güzellik merkezi", "estetik", "mobilya", "oto galeri", "düğün salonu"
+            ]
+            
             secili_sektorler = st.multiselect(
-                "Hangi Sektörler Taranacak?",
-                ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat", "kuaför", "spor salonu", "veteriner", "e-ticaret"],
-                default=["klinik", "otel", "emlak", "butik"]
+                "Hangi Sektörler Taranacak? (İsterseniz çarpıya basıp eleyebilirsiniz)",
+                tum_sektorler,
+                default=tum_sektorler # Hepsi seçili gelir
             )
             arama_kelimeleri = secili_sektorler
         else:
             st.info("Genel arama yaparken şehir veya sektör sınırı yoktur. Aklınıza gelen her şeyi yazabilirsiniz. (Örn: 'İstanbul kuaför', 'e-ticaret sitesi' vb.)")
             serbest_metin = st.text_input("Aramak istediğiniz kelime veya cümle")
-            sehir_input = "" # Genel aramada şehir değişkenini boş bırakıyoruz
+            sehir_input = "" 
             arama_kelimeleri = [serbest_metin] if serbest_metin else []
             
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
@@ -305,19 +310,19 @@ with tab4:
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                limit = 3 # Her arama kelimesi için max 3 site bul (hız için)
+                
+                # TÜM SEKTÖRLER SEÇİLDİĞİ İÇİN İŞLEM ÇOK UZAMASIN DİYE LİMİT 2'YE DÜŞÜRÜLDÜ
+                limit = 2 
 
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🔍 '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
 
-                    # Sorgu Mantığı
                     if arama_modu == "Hedefli Arama (Sektör + Şehir)":
                         if sehir_input == "Tüm Türkiye":
                             query = f'"{kelime}" iletişim site:.com.tr'
                         else:
                             query = f'"{kelime}" "{sehir_input}" iletişim site:.com.tr'
                     else:
-                        # Serbest arama sorgusu
                         query = f'{kelime} iletişim site:.com.tr'
 
                     params = {
