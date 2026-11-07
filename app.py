@@ -88,11 +88,10 @@ with tab3:
                         st.write(failures[:5])
                 except: st.error("Hata oluştu.")
 
-# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU (TEK TIKLA AVCI)
+# 4. SEKME: OTOMATİK MÜŞTERİ BULUCU
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu")
     
-    # Hazır Sektör Listesi
     hedef_sektorler = ["butik", "klinik", "emlak", "mobilya", "otel", "restoran", "diş kliniği", "avukat"]
     
     with st.form("otomatik_avci"):
@@ -102,25 +101,24 @@ with tab4:
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
         
         if baslat_butonu:
-            # Arama yapılacak şehir ayarı
             arama_sehir = sehir_input
             
-            # GÜÇLENDİRİLMİŞ KARA LİSTE
+            # GÜÇLENDİRİLMİŞ KARA LİSTE (Devlet, Eğitim, Forum, Rehber Engelleyici)
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", 
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", 
                 "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
                 "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
-                "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr"
+                "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
+                ".gov.tr", ".edu.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr" # Devlet ve Üniversiteler
             ]
             
             leads = []
-            seen_domains = set() # Aynı siteyi tekrar eklememek için hafıza
+            seen_domains = set() 
             
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
-            limit = 3 # Her sektör için en fazla 3 site
+            limit = 3 
             
             for idx, sek in enumerate(hedef_sektorler):
                 status_text.text(f"🔍 '{sek}' sektörü taranıyor... ({idx+1}/{len(hedef_sektorler)})")
@@ -136,29 +134,30 @@ with tab4:
                         url = r.get("link", "")
                         title = r.get("title", "").lower()
                         
-                        # Kara liste (URL kontrolü)
                         if any(x in url for x in kara_liste): continue
-                        
-                        # Başlık kontrolü: Eğer başlıkta bu kelimeler varsa rehber sitesidir, atla
-                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları"]): continue
+                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi"]): continue
                         
                         domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                         if not domain_match: continue
                         domain = domain_match.group(1)
                         
-                        # Eğer bu domain daha önce listeye eklendiyse atla
                         if domain in seen_domains: continue
                         
-                        # Google API ile hata sayısını ölç
+                        # Google API'den HATA DETAYLARINI ÇEK
                         hata = 0
+                        hata_detaylari = "Erişilebilirlik eksiklikleri"
                         try:
                             api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://{domain}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                             rr = requests.get(api, timeout=20)
                             if rr.status_code == 200:
-                                hata = len([d for a, d in rr.json()['lighthouseResult']['audits'].items() if d.get('score') == 0])
+                                audits = rr.json()['lighthouseResult']['audits']
+                                failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
+                                hata = len(failures)
+                                # E-postada kullanmak için ilk 2 hatayı al
+                                if failures:
+                                    hata_detaylari = " ve ".join(failures[:2]) 
                         except: pass
                         
-                        # HATA 2'DEN AZ İSE ÇÖPE AT
                         if hata < 2: continue
                             
                         mail = f"info@{domain}"
@@ -168,11 +167,12 @@ with tab4:
                             "Şirket": r.get("title", domain)[:30],
                             "Domain": domain, 
                             "Hata": hata, 
+                            "Hata Detayı": hata_detaylari,
                             "E-posta": mail,
                             "Durum": "🔥 Sıcak (Hemen Ara)" if hata >= 8 else "Ilık (E-posta At)"
                         })
                         
-                        seen_domains.add(domain) # Bulunan siteyi hafızaya kaydet
+                        seen_domains.add(domain) 
                         count += 1
                 except: pass
                 progress_bar.progress((idx + 1) / len(hedef_sektorler))
@@ -209,24 +209,32 @@ with tab5:
                     alici = row['E-posta']
                     site = row['Domain']
                     hata_sayisi = row['Hata']
+                    hata_detayi = row.get('Hata Detayı', 'çeşitli erişilebilirlik sorunları')
                     
                     msg = MIMEMultipart()
                     msg['From'] = GMAIL_ADRESI
                     msg['To'] = alici
-                    msg['Subject'] = f"{site} sitenizdeki {hata_sayisi} kritik erişilebilirlik hatası hakkında"
+                    msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
                     
+                    # ÇÖZÜM ODAKLI E-POSTA ŞABLONU
                     body = f"""Merhaba,
                     
-{site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde, görme engelli müşterilerinizin alışveriş yapmasını zorlaştıran {hata_sayisi} kritik hata tespit ettim.
+{site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google'ın resmi erişilebilirlik standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
                     
-Bu hatalar hem yasal risk oluşturuyor hem de potansiyel müşteri kaybına yol açıyor. İsterseniz detaylı raporu gönderebilirim.
+Tespit ettiğim en önemli sorun: **{hata_detayi}**.
                     
-Sadece bu e-postaya "Evet" yazmanız yeterli.
+Bu durum, görme engelli veya hareket kısıtlılığı olan potansiyel müşterilerinizin sitenizi kullanamamasına neden oluyor. Ayrıca, 2025 Erişilebilirlik Genelgesi kapsamında işletmelere yönelik yasal yaptırımlar ve idari para cezaları gündemde.
+                    
+**İyi haber:** Bu sorunların çözümü oldukça basit. Örneğin, görsel etiketleri eksikse, HTML koduna doğru tanımlamaları eklemek yeterli olacaktır.
+                    
+İsterseniz sitenizdeki tüm hataların listesini ve her biri için uygulanabilir çözüm önerilerini içeren **ücretsiz detaylı raporu** gönderebilirim.
+                    
+Sadece bu e-postaya **"Evet"** yazmanız yeterli.
                     
 Saygılarımla,
 Cuma Babacan"""
                     
-                    msg.attach(MIMEText(body, 'plain'))
+                    msg.attach(MIMEText(body, 'plain', 'utf-8'))
                     
                     try:
                         server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -239,7 +247,7 @@ Cuma Babacan"""
                         hatali += 1
                         
                     progress.progress((i + 1) / len(st.session_state.lead_results))
-                    time.sleep(2) # Spam'a düşmemek için 2 saniye bekle
+                    time.sleep(2)
                     
                 st.success(f"İşlem tamam! {basarili} e-posta başarıyla gönderildi. {hatali} hata.")
         else:
@@ -256,7 +264,7 @@ Cuma Babacan"""
                     mail.select("inbox")
                     
                     status, messages = mail.search(None, "ALL")
-                    mail_ids = messages[0].split()[-20:] # Son 20 mail
+                    mail_ids = messages[0].split()[-20:]
                     
                     yanitlar = []
                     olumlu_kelimeler = ["evet", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
