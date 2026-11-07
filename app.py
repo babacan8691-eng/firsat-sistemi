@@ -18,6 +18,52 @@ st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
+# --- HATA ÇEVİRİ VE ÇÖZÜM SÖZLÜĞÜ ---
+hata_sozlugu = {
+    "Image elements do not have [alt] attributes": {
+        "tr": "Görsellerde alternatif metin (alt etiketi) eksik",
+        "cozum": "Her görsele içeriği tanımlayan bir 'alt' metni ekleyin (dekoratifse alt=\"\" bırakın)."
+    },
+    "Heading elements are not in a sequentially-descending order": {
+        "tr": "Başlık etiketleri (H1, H2, H3) sıralı değil",
+        "cozum": "Başlıkları hiyerarşik sırayla kullanın (H1 -> H2 -> H3 gibi, seviye atlamayın)."
+    },
+    "Elements with role=\"none\" or role=\"presentation\" have conflicts": {
+        "tr": "Sunum rolü çakışması (role=\"presentation\")",
+        "cozum": "Etkileşimli veya odaklanabilir öğelerden role=\"presentation\" etiketini kaldırın."
+    },
+    "Touch targets do not have sufficient size or spacing": {
+        "tr": "Dokunmatik hedefler (butonlar) çok küçük veya birbirine çok yakın",
+        "cozum": "Buton boyutlarını en az 48x48 piksel yapın ve aralarına en az 8 piksel boşluk ekleyin."
+    },
+    "Elements with visible text labels do not have matching accessible names": {
+        "tr": "Görünen metin ile erişilebilir isim uyuşmuyor",
+        "cozum": "aria-label değerinin, ekranda görünen yazıyla birebir aynı olmasını sağlayın."
+    },
+    "Buttons do not have an accessible name": {
+        "tr": "Butonların erişilebilir bir adı yok",
+        "cozum": "Buton içine metin ekleyin veya aria-label ile butonu adlandırın."
+    },
+    "Background and foreground colors do not have a sufficient contrast ratio": {
+        "tr": "Renk kontrastı yetersiz",
+        "cozum": "Metin ve arka plan renkleri arasındaki kontrast oranını en az 4.5:1 yapın."
+    },
+    "Links do not have a discernible name": {
+        "tr": "Bağlantıların (linklerin) anlaşılır bir adı yok",
+        "cozum": "Tıklanabilir linklerin içine 'Buraya tıkla' yerine hedefi belirten metinler yazın."
+    },
+    "Form elements do not have associated labels": {
+        "tr": "Form alanlarının ilişkili etiketleri (label) yok",
+        "cozum": "Her form elemanı için ilgili HTML <label> etiketini doğru şekilde ilişkilendirin."
+    }
+}
+
+def hatayi_cevir(hata_ingilizce):
+    for key, val in hata_sozlugu.items():
+        if key.lower() in hata_ingilizce.lower():
+            return f"Sorun: {val['tr']} | Çözüm: {val['cozum']}"
+    return f"Sorun: {hata_ingilizce} (Çözüm için lütfen inceleyin)"
+
 # --- VERİ TABANI ---
 if 'musteri_df' not in st.session_state:
     st.session_state.musteri_df = pd.DataFrame(columns=["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"])
@@ -85,7 +131,10 @@ with tab3:
                         failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                         st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
                         st.metric("Kritik Hata", len(failures))
-                        st.write(failures[:5])
+                        
+                        st.write("**Türkçe Hata Detayları ve Çözümleri:**")
+                        for hata in failures[:5]:
+                            st.info(hatayi_cevir(hata))
                 except: st.error("Hata oluştu.")
 
 # 4. SEKME: OTOMATİK MÜŞTERİ BULUCU
@@ -110,7 +159,7 @@ with tab4:
                 "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
                 "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor",
                 "doktorasistan", "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr",
-                ".gov.tr", ".edu.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr" # Devlet ve Üniversiteler
+                ".gov.tr", ".edu.tr", "ibb.istanbul", "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr"
             ]
             
             leads = []
@@ -135,7 +184,7 @@ with tab4:
                         title = r.get("title", "").lower()
                         
                         if any(x in url for x in kara_liste): continue
-                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi"]): continue
+                        if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı"]): continue
                         
                         domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                         if not domain_match: continue
@@ -143,7 +192,7 @@ with tab4:
                         
                         if domain in seen_domains: continue
                         
-                        # Google API'den HATA DETAYLARINI ÇEK
+                        # Google API'den HATA DETAYLARINI ÇEK VE TÜRKÇELEŞTİR
                         hata = 0
                         hata_detaylari = "Erişilebilirlik eksiklikleri"
                         try:
@@ -153,9 +202,9 @@ with tab4:
                                 audits = rr.json()['lighthouseResult']['audits']
                                 failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                                 hata = len(failures)
-                                # E-postada kullanmak için ilk 2 hatayı al
                                 if failures:
-                                    hata_detaylari = " ve ".join(failures[:2]) 
+                                    # İlk 2 hatayı Türkçe çevirisi ve çözümüyle al
+                                    hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                         except: pass
                         
                         if hata < 2: continue
@@ -167,7 +216,7 @@ with tab4:
                             "Şirket": r.get("title", domain)[:30],
                             "Domain": domain, 
                             "Hata": hata, 
-                            "Hata Detayı": hata_detaylari,
+                            "Hata Detayı (TR)": hata_detaylari,
                             "E-posta": mail,
                             "Durum": "🔥 Sıcak (Hemen Ara)" if hata >= 8 else "Ilık (E-posta At)"
                         })
@@ -209,23 +258,22 @@ with tab5:
                     alici = row['E-posta']
                     site = row['Domain']
                     hata_sayisi = row['Hata']
-                    hata_detayi = row.get('Hata Detayı', 'çeşitli erişilebilirlik sorunları')
+                    hata_detayi = row.get('Hata Detayı (TR)', 'çeşitli erişilebilirlik sorunları')
                     
                     msg = MIMEMultipart()
                     msg['From'] = GMAIL_ADRESI
                     msg['To'] = alici
                     msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
                     
-                    # ÇÖZÜM ODAKLI E-POSTA ŞABLONU
+                    # ÇÖZÜM ODAKLI E-POSTA ŞABLONU (Türkçe Detaylı)
                     body = f"""Merhaba,
                     
 {site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google'ın resmi erişilebilirlik standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
                     
-Tespit ettiğim en önemli sorun: **{hata_detayi}**.
+Tespit ettiğim en önemli sorun(lar): 
+**{hata_detayi}**
                     
 Bu durum, görme engelli veya hareket kısıtlılığı olan potansiyel müşterilerinizin sitenizi kullanamamasına neden oluyor. Ayrıca, 2025 Erişilebilirlik Genelgesi kapsamında işletmelere yönelik yasal yaptırımlar ve idari para cezaları gündemde.
-                    
-**İyi haber:** Bu sorunların çözümü oldukça basit. Örneğin, görsel etiketleri eksikse, HTML koduna doğru tanımlamaları eklemek yeterli olacaktır.
                     
 İsterseniz sitenizdeki tüm hataların listesini ve her biri için uygulanabilir çözüm önerilerini içeren **ücretsiz detaylı raporu** gönderebilirim.
                     
