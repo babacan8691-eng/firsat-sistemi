@@ -258,20 +258,27 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # SON KARA LİSTE GÜNCELLEMESİ (Forum, dizin siteleri, demo linkler eklendi)
+                # NİHAİ VE EN GENİŞ KARA LİSTE (Kurumlar, Rehberler, Bozuk Siteler)
                 kara_liste = [
-                    "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol", "hepsiburada", 
-                    "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360", "infobel", "eticaretlink", 
-                    "com.com", "armut.com", "foursquare", "yelp", "bulurum", "rehber", "firmalar", "katalog", 
-                    "harita", "eksisozluk", "tripadvisor", "doktorasistan", "tatilnokta", "menu-tr", "otelz", 
-                    "etstur", "tatilbudur", "istanbul.net.tr", ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "ibb.istanbul", 
-                    "x.com", "kent.edu.tr", "kto.edu.tr", "tim.org.tr", "saygi.tr", "iletisim.com.tr", 
-                    "scheddy", "yazilim", "saas", "platform", "apple.com", "play.google.com", "wa.me", 
-                    "whatsapp", "appstore", "android", "ios", "kolayrandevu", "etso", "ticaretodasi", "belediyesi",
-                    "sorgulama", "telefonrehberi", "bulucu", "sportcard", "sporcard", "yönetim", "otomasyon", "sistem", "panel",
+                    # Sosyal Medya ve Arama Motorları
+                    "yandex", "google", "facebook", "instagram", "twitter", "x.com", "linkedin", "pinterest", "tiktok", "youtube",
+                    # E-ticaret Devleri
+                    "sahibinden", "trendyol", "hepsiburada", "n11", "gittigidiyor", "amazon", "aliexpress", "getir", "yemeksepeti", "çiçeksepeti",
+                    # Dizin / Portal / Rehber Siteleri
+                    "wikipedia", "doktorum360", "infobel", "eticaretlink", "com.com", "armut.com", "foursquare", "yelp",
+                    "bulurum", "rehber", "firmalar", "katalog", "harita", "eksisozluk", "tripadvisor", "doktorasistan",
+                    "tatilnokta", "menu-tr", "otelz", "etstur", "tatilbudur", "istanbul.net.tr", "firmasehri", "ankaraesnaf",
+                    "chicco", "forum", "turk.net", "g.co", "adresci", "firmanyo", "iletisimadresleri", "demo.", "dijifa",
+                    "bebee", "arvingo", "softbutik", "scheddy", "yazilim", "saas", "platform", "kolayrandevu",
+                    "find.com", "find", "bulucu", "portal", "dizin", "arama", "search", "lookup", "listele", "firma", "rehberi",
+                    # Resmi Kurumlar / Devlet / Eğitim
+                    ".gov.tr", ".edu.tr", ".bel.tr", ".org.tr", "ibb.istanbul", "kent.edu.tr", "kto.edu.tr",
+                    "tim.org.tr", "saygi.tr", "iletisim.com.tr", ".istanbul", "iett", "belediyesi", "valiligi", "bakanligi", "odasi",
+                    # Uygulama Mağazaları ve Kısa Linkler
+                    "apple.com", "play.google.com", "wa.me", "whatsapp", "appstore", "android", "ios",
+                    # Büyük Markalar / Kurumsal
                     "audi", "volkswagen", "mercedes", "bmw", "toyota", "honda", "ford", "hyundai", "renault", "fiat",
-                    "firmasehri", "ankaraesnaf", "chicco", 
-                    "forum", "turk.net", "g.co", "adresci", "firmanyo", "iletisimadresleri", "demo.", "dijifa", "bebee", "arvingo", "softbutik" # YENİLER
+                    "apple", "samsung", "sony", "lg", "huawei", "xiaomi", "oppo", "vestel", "arcelik", "beko", "turkcell", "vodafone", "turktelekom"
                 ]
 
                 leads = []
@@ -300,18 +307,24 @@ with tab4:
                             if count >= limit: break
                             url = r.get("link", "")
                             title = r.get("title", "").lower()
+                            domain = ""
 
-                            if any(x in url for x in kara_liste) or any(x in title for x in kara_liste): continue
-                            if "index of" in title or "index of" in url: continue
-                            if any(x in title for x in ["sarı sayfa", "rehber", "katalog", "firmalar", "listesi", "sayfaları", "belediyesi", "üniversitesi", "meclisi", "başkanlığı", "odası", "derneği", "vakfı"]): continue
+                            # URL ve Başlık Kara Liste Kontrolü
+                            if any(x in url.lower() for x in kara_liste) or any(x in title for x in kara_liste): continue
                             
-                            if any(x in title for x in ["application error", "error", "500", "404", "not found", "forbidden", "erişim engellendi"]): continue
+                            # Bozuk Site / Hata Sayfası Kontrolü (Çok Önemli)
+                            hatali_basliklar = ["index of", "application error", "500 internal", "404 not found", "403 forbidden", "just a moment", "cloudflare", "erişim engellendi", "sayfa bulunamadı"]
+                            if any(x in title for x in hatali_basliklar): continue
+                            
+                            # Gereksiz rehber kelimeleri
+                            if any(x in title for x in ["sarı sayfa", "katalog", "firmalar", "listesi", "sayfaları", "meclisi", "başkanlığı", "derneği", "vakfı"]): continue
 
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', url)
                             if not domain_match: continue
-                            domain = domain_match.group(1)
+                            domain = domain_match.group(1).lower()
                             
-                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi", "forum", "g.co"]): continue
+                            # Domain Kara Liste Kontrolü (Ekstra Güvenlik)
+                            if any(x in domain for x in ["apple", "wa.me", "whatsapp", "play.google", "appstore", "etso", "odasi", "sorgulama", "sportcard", "yazilim", "platform", "audi", "forum", "g.co", "iett", "istanbul", "find"]): continue
                             if domain in seen_domains: continue
 
                             hata = 0
