@@ -92,14 +92,19 @@ df = st.session_state.musteri_df
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
-# ================= HATA ÇEVİRİ =================
+# ================= GENİŞLETİLMİŞ HATA ÇEVİRİ SÖZLÜĞÜ =================
 hata_sozlugu = {
     "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele içeriği tanımlayan bir 'alt' metni ekleyin.",
     "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Başlıkları hiyerarşik sırayla kullanın.",
     "Elements with role=\"none\" or role=\"presentation\" have conflicts": "Sunum rolü çakışması. Çözüm: Etkileşimli öğelerden role=\"presentation\" etiketini kaldırın.",
     "Touch targets do not have sufficient size or spacing": "Dokunmatik hedefler çok küçük. Çözüm: Buton boyutlarını en az 48x48 piksel yapın.",
     "Buttons do not have an accessible name": "Butonların erişilebilir bir adı yok. Çözüm: Buton içine metin ekleyin veya aria-label ile adlandırın.",
-    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin ve arka plan arasındaki kontrastı artırın."
+    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin ve arka plan arasındaki kontrastı artırın.",
+    "elements do not have a title": "Iframe (Çerçeve) etiketlerinde başlık eksik. Çözüm: Videolar veya gömülü içerikler için 'title' özelliği ekleyin.",
+    "ARIA input fields do not have accessible names": "Form alanlarının erişilebilir adları yok. Çözüm: Giriş alanlarına 'label' veya 'aria-label' ekleyin.",
+    "Links do not have a discernible name": "Bağlantıların (link) anlaşılır bir adı yok. Çözüm: Sadece ikon olan linklere metin veya 'aria-label' ekleyin.",
+    "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: ARIA etiketlerinin değerlerini standartlara uygun hale getirin.",
+    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: Sayfanın ana içeriğini <main> etiketi içine alın."
 }
 
 def hatayi_cevir(hata_ingilizce):
@@ -176,13 +181,11 @@ with tab2:
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        # Ana sayfayı dene
         r = requests.get(url, headers=headers, timeout=10)
         emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', r.text)
         if emails:
             return emails[0]
         
-        # İletişim sayfasını dene
         for path in ['/iletisim', '/contact', '/iletisim/']:
             contact_url = url.rstrip('/') + path
             try:
@@ -236,7 +239,6 @@ with tab4:
         if baslat_butonu:
             arama_sehir = sehir_input
 
-            # GÜNCELLENMİŞ KARA LİSTE (Belediyeler, SaaS, Dizinler eklendi)
             kara_liste = [
                 "yandex", "google", "facebook", "instagram", "sahibinden", "trendyol",
                 "hepsiburada", "n11", "gittigidiyor", "amazon", "wikipedia", "doktorum360",
@@ -272,7 +274,6 @@ with tab4:
                         url = r.get("link", "")
                         title = r.get("title", "").lower()
 
-                        # Çöp veri ve istenmeyen site filtreleri
                         if any(x in url for x in kara_liste) or any(x in title for x in kara_liste):
                             continue
                         if "index of" in title or "index of" in url:
@@ -305,10 +306,9 @@ with tab4:
                         if hata < 2:
                             continue
 
-                        # GERÇEK E-POSTA BULMA MANTIĞI
                         status_text.text(f"📧 {domain} için e-posta aranıyor...")
                         gercek_mail = eposta_bul(f"https://{domain}")
-                        mail = gercek_mail if gercek_mail else f"info@{domain}" # Bulamazsa tahmin et
+                        mail = gercek_mail if gercek_mail else f"info@{domain}"
                         
                         tahmini_ucret = 1500 + (hata * 200)
 
@@ -339,7 +339,6 @@ with tab4:
             else:
                 st.warning("Uygun site bulunamadı.")
 
-    # MOBİL UYUMLU KART TASARIMI
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Kart Görünümü)")
         for idx, row in st.session_state.lead_results.iterrows():
@@ -386,7 +385,6 @@ with tab5:
                         msg['To'] = alici
                         msg['Subject'] = f"{site} sitenizdeki erişilebilirlik sorunu ve çözümü hakkında"
 
-                        # KİŞİSELLEŞTİRİLMİŞ E-POSTA METNİ
                         body = f"""Merhaba {sirket_adi} Yetkilisi,
 
 {site} web sitenizi engelli bireylerin kullanımı açısından inceledim. Google standartlarına göre sitenizde **{hata_sayisi}** kritik hata tespit ettim.
