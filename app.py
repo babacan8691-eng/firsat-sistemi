@@ -16,6 +16,28 @@ from bs4 import BeautifulSoup
 from serpapi import GoogleSearch
 
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
+
+# ================= GİRİŞ EKRANI (AUTHENTICATION) =================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("🔐 Sisteme Giriş")
+    st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
+    
+    with st.form("login_form"):
+        kullanici_adi = st.text_input("Kullanıcı Adı")
+        sifre = st.text_input("Şifre", type="password")
+        submit = st.form_submit_button("Giriş Yap")
+        
+        if submit:
+            if kullanici_adi == "Cuma Babacan" and sifre == "784512":
+                st.session_state.logged_in = True
+                st.rerun()
+            else:
+                st.error("Hatalı kullanıcı adı veya şifre!")
+    st.stop()  # Giriş yapılmadıysa kodun devamını çalıştırma
+
 st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
 
 # ================= KALICI DEPOLAMA =================
@@ -373,6 +395,9 @@ with tab5:
                     basarili = 0
                     hatali = 0
                     progress = st.progress(0)
+                    
+                    # KENDİ PANELİNİN CANLI LİNKİ
+                    PANEL_LINKI = "https://yimf3leyv.streamlit.app"
 
                     for i, row in gonderilecekler.iterrows():
                         alici = row['E-posta']
@@ -404,6 +429,9 @@ Bu hataların giderilmesi için size özel bir bakım paketimiz mevcut. Çözüm
 Ancak hemen bir ödeme yapmanıza gerek yok. İsterseniz sitenizin tamamının taranıp, hangi sayfada hangi hatanın olduğunu gösteren **ücretsiz detaylı denetim raporunu** size gönderebilirim.
 
 Bu ücretsiz raporu talep etmek için sadece bu e-postaya **"Raporu Gönder"** yazmanız yeterli.
+
+Benim kim olduğumu, hikayemi ve bu işi neden yaptığımı merak ediyorsanız, geliştirdiğim sistemi ve vitrinimi buradan inceleyebilirsiniz:
+🌐 {PANEL_LINKI}
 
 Sağlıklı ve kazançlı günler dilerim.
 
@@ -516,7 +544,6 @@ Erişilebilirlik Danışmanı"""
 
 # ================= 6. SEKME: VİTRİN & HAKKIMDA =================
 with tab6:
-    # Streamlit içinde HTML/CSS kullanarak daha şık bir görünüm elde ediyoruz
     st.markdown("""
         <style>
         .hero { background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%); padding: 40px; border-radius: 15px; color: white; text-align: center; margin-bottom: 30px; }
@@ -524,11 +551,9 @@ with tab6:
         .hero p { font-size: 18px; font-weight: 300; }
         .card { background-color: #f9f9f9; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; color: #333; }
         .card h3 { margin-top: 0; color: #1f4037; }
-        .highlight { color: #00C853; font-weight: bold; }
         </style>
     """, unsafe_allow_html=True)
 
-    # Hero Alanı
     st.markdown("""
         <div class="hero">
             <h1>♿ Engelsiz Web, Erişilebilir Gelecek</h1>
