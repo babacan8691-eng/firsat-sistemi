@@ -173,11 +173,12 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA (TIMEOUT=3 SANİYE) =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url, headers=headers, timeout=10)
+        # HIZ OPTİMİZASYONU: Yanıt gelmezse 3 saniyede bırak, sistemi kilitleme
+        r = requests.get(url, headers=headers, timeout=3) 
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
@@ -191,7 +192,8 @@ def eposta_bul(url):
         for path in ['/iletisim', '/contact']:
             contact_url = url.rstrip('/') + path
             try:
-                r2 = requests.get(contact_url, headers=headers, timeout=5)
+                # İletişim sayfası için de 2 saniye bekle
+                r2 = requests.get(contact_url, headers=headers, timeout=2)
                 emails2 = re.findall(email_pattern, r2.text)
                 for em in emails2:
                     em_lower = em.lower()
@@ -213,7 +215,7 @@ with tab3:
                 try:
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                     url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
-                    r = requests.get(url, timeout=60)
+                    r = requests.get(url, timeout=15) # Hız için 15 sn
                     if r.status_code == 200:
                         data = r.json()
                         score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
@@ -259,11 +261,16 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
+                # MATEMATİKSEL KESİN LİMİT: Çok fazla site gelirse donmasın diye limit düşürüldü
+                limit = 4 
+                
+                # ZİNCİR MARKALARI (Sistemi yormamak için e-posta aramayı atlayacağız)
+                zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western"]
+
                 leads = []
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                limit = 10 # Haritalar modunda her aramadan 10 işletme çekeceğiz
 
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
@@ -271,7 +278,6 @@ with tab4:
                     sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
                     query = f'{kelime}{sehir_ekle}'
 
-                    # DİKKAT: engine="google_maps" kullanıyoruz. Bu, sadece işletmeleri getirir.
                     params = {
                         "engine": "google_maps", 
                         "q": query, 
@@ -287,7 +293,6 @@ with tab4:
                         for place in local_results:
                             if count >= limit: break
                             
-                            # Sadece web sitesi olan işletmeleri al
                             website = place.get("website", "")
                             if not website: continue
                             
@@ -299,27 +304,26 @@ with tab4:
                             
                             if domain in seen_domains: continue
 
-                            status_text.text(f"📧 {domain} için e-posta aranıyor...")
-                            mail = eposta_bul(website)
-                            
-                            # E-posta bulunamazsa info@domain kullan
-                            if not mail: 
+                            # EĞER ZİNCİR MARKAYSA HİÇ E-POSTA ARAMA, DİREKT ATLA (Hız için)
+                            if any(marka in domain or marka in title for marka in zincir_markalar):
                                 mail = f"info@{domain}"
+                            else:
+                                status_text.text(f"📧 {domain} için e-posta aranıyor...")
+                                mail = eposta_bul(website)
+                                if not mail: 
+                                    mail = f"info@{domain}"
 
                             hata = 0
                             hata_detaylari = "Erişilebilirlik eksiklikleri"
                             try:
                                 api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                                rr = requests.get(api, timeout=20)
+                                rr = requests.get(api, timeout=10) # Hız için 10 sn
                                 if rr.status_code == 200:
                                     audits = rr.json()['lighthouseResult']['audits']
                                     failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                                     hata = len(failures)
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
-
-                            # 0 hatası olanı da alalım, belki tasarımı eskidir
-                            # if hata < 1: continue 
 
                             tahmini_ucret = 1500 + (hata * 200)
 
@@ -330,9 +334,7 @@ with tab4:
                             })
                             seen_domains.add(domain)
                             count += 1
-                    except Exception as e: 
-                        print(e)
-                        pass
+                    except Exception: pass
                     progress_bar.progress((idx + 1) / len(arama_kelimeleri))
 
                 status_text.text("✅ Tarama tamamlandı!")
