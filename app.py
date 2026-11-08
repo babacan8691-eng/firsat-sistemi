@@ -258,7 +258,7 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                limit = 30 # Limit artırıldı, böylece boş dönmez
+                limit = 30 
                 
                 zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
                 sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
@@ -271,7 +271,6 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    # HATA DÜZELTİLDİ: "Tüm Türkiye" seçildiğinde "Türkiye" kelimesini aramıyoruz.
                     if sehir_input == "Tüm Türkiye":
                         query = kelime 
                     else:
@@ -282,13 +281,15 @@ with tab4:
                         "q": query, 
                         "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
                         "hl": "tr",
-                        "gl": "tr"
+                        "gl": "tr",
+                        "start": 0,  # API boş sonuç hatasını atlatmak için eklendi
+                        "ll": "@39.0,35.0,5z" # Türkiye merkezli arama için eklendi
                     }
 
                     try:
                         res = GoogleSearch(params).get_dict()
                         
-                        # HATA DÜZELTİLDİ: local_results veya place_results kontrolü
+                        # local_results veya place_results kontrolü
                         local_results = res.get("local_results") or res.get("place_results") or []
                         
                         count = 0
