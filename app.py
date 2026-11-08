@@ -267,23 +267,24 @@ with tab4:
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
+                api_bos_donenler = []
 
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
+                    # KESİN ÇÖZÜM: Tüm Türkiye seçiliyse sorgunun sonuna "Türkiye" ekle
                     if sehir_input == "Tüm Türkiye":
-                        query = kelime 
+                        query = f'{kelime} Türkiye' 
                     else:
                         query = f'{kelime} {sehir_input}'
 
+                    # start ve ll parametreleri kaldırıldı (google_maps motorunu kilitliyordu)
                     params = {
                         "engine": "google_maps", 
                         "q": query, 
                         "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
                         "hl": "tr",
-                        "gl": "tr",
-                        "start": 0,  # API boş sonuç hatasını atlatmak için eklendi
-                        "ll": "@39.0,35.0,5z" # Türkiye merkezli arama için eklendi
+                        "gl": "tr"
                     }
 
                     try:
@@ -292,6 +293,9 @@ with tab4:
                         # local_results veya place_results kontrolü
                         local_results = res.get("local_results") or res.get("place_results") or []
                         
+                        if not local_results:
+                            api_bos_donenler.append(kelime)
+                            
                         count = 0
                         for place in local_results:
                             if count >= limit: break
@@ -344,12 +348,16 @@ with tab4:
 
                 status_text.text("✅ Tarama tamamlandı!")
                 time.sleep(1)
-                if leads:
+                
+                # Eğer arama yapılan tüm kelimeler için API boş döndüyse
+                if not leads and len(api_bos_donenler) == len(arama_kelimeleri):
+                    st.error("Google Haritalar API'si bu arama için hiç sonuç döndürmedi (API hatası). Lütfen 'İstanbul' gibi tek bir şehir seçerek tekrar deneyin.")
+                elif leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
                     st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
                 else:
-                    st.warning("Uygun site bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
+                    st.warning("Arama yapıldı ancak filtrelerimizden geçen (hatalı) işletme bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
