@@ -17,7 +17,6 @@ from serpapi import GoogleSearch
 
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 
-# ================= GİRİŞ EKRANI =================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
@@ -42,7 +41,6 @@ if st.sidebar.button("Çıkış Yap"):
     st.session_state.logged_in = False
     st.rerun()
 
-# ================= KALICI DEPOLAMA =================
 SUPABASE_KEY = "sb_publishable_Au_J5CujUVFKyZzdx7zALw_5qLnIb3r"
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 DATA_DIR = Path("app_data")
@@ -65,8 +63,7 @@ KOLONLAR = {
 }
 
 def _kaydet(anahtar, df):
-    try:
-        df.to_json(DATA_DIR / f"{anahtar}.json", orient="records", force_ascii=False, indent=2)
+    try: df.to_json(DATA_DIR / f"{anahtar}.json", orient="records", force_ascii=False, indent=2)
     except Exception: pass
     if _sb:
         try: _sb.table("app_state").upsert({"key": anahtar, "data": df.to_dict(orient="records")}).execute()
@@ -97,11 +94,9 @@ def persist(anahtar):
 init_state()
 df = st.session_state.musteri_df
 
-# ================= GMAIL =================
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
-# ================= GENİŞLETİLMİŞ HATA ÇEVİRİ =================
 hata_sozlugu = {
     "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele 'alt' metni ekleyin.",
     "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Hiyerarşik sırayla kullanın.",
@@ -126,13 +121,11 @@ def hatayi_cevir(hata_ingilizce):
         if key.lower() in hata_ingilizce.lower(): return val
     return f"{hata_ingilizce}"
 
-# ================= SEKMELER =================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Genel Bakış", "👥 Müşteri Yönetimi", "🔍 Gerçek Site Tarayıcı", 
     "🤖 Otomatik Müşteri Bulucu", "📧 E-posta Otomasyonu & Loglar", "🌟 Vitrin & Hakkımda"
 ])
 
-# ================= 1. SEKME =================
 with tab1:
     st.header("Sistem Özeti ve Başarı Skoru")
     toplam_gonderilen = len(st.session_state.gonderilenler_log)
@@ -158,7 +151,6 @@ with tab1:
     if not df.empty:
         st.bar_chart(df.set_index("Müşteri Adı")["Aylık Ücret (TL)"], color="#00C853")
 
-# ================= 2. SEKME =================
 with tab2:
     st.header("Müşteri ve Denetim Kayıtları")
     with st.form("ekleme_formu", clear_on_submit=True):
@@ -173,21 +165,18 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA (TIMEOUT=3 SANİYE) =================
-def eposta_bul(url):
+    st.dataframe(df, use_container_width=True) def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         r = requests.get(url, headers=headers, timeout=3) 
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
-        
         for em in emails:
             em_lower = em.lower()
             if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
                 if not any(fake in em_lower for fake in fake_emails):
                     return em
-                    
         for path in ['/iletisim', '/contact']:
             contact_url = url.rstrip('/') + path
             try:
@@ -202,7 +191,6 @@ def eposta_bul(url):
     except Exception: pass
     return None
 
-# ================= 3. SEKME =================
 with tab3:
     st.header("Gerçek Erişilebilirlik Tarayıcı")
     with st.form("tarama_formu"):
@@ -225,7 +213,6 @@ with tab3:
                         for hata in failures[:5]: st.info(hatayi_cevir(hata))
                 except Exception: st.error("Hata oluştu.")
 
-# ================= 4. SEKME =================
 with tab4:
     st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (Haritalar Modu)")
     
@@ -247,7 +234,7 @@ with tab4:
         else:
             st.info("Genel arama yaparken şehir veya sektör sınırı yoktur.")
             serbest_metin = st.text_input("Aramak istediğiniz kelime veya cümle")
-            sehir_input = "" 
+            sehir_input = "Türkiye"
             arama_kelimeleri = [serbest_metin] if serbest_metin else []
             
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
@@ -259,16 +246,14 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                limit = 4 
+                limit = 5
                 
-                # ULUSLARARASI ZİNCİR MARKALAR VE ÜNİVERSİTELER
                 zincir_markalar = [
                     "wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", 
                     "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", 
-                    "university", "üniversitesi", "college", "kolej", "hastanesi.com"
+                    "university", "üniversitesi", "college", "kolej"
                 ]
                 
-                # SOSYAL MEDYA VE İLAN/REZERVASYON UZANTILARI (Kesin Çöp)
                 sosyal_medya_platformlar = [
                     "facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", 
                     "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com",
@@ -283,14 +268,17 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    sehir_ekle = f" {sehir_input}" if sehir_input and sehir_input != "Tüm Türkiye" else ""
-                    query = f'{kelime}{sehir_ekle}'
+                    if sehir_input == "Tüm Türkiye":
+                        query = f'{kelime} Türkiye'
+                    else:
+                        query = f'{kelime} {sehir_input}'
 
                     params = {
                         "engine": "google_maps", 
                         "q": query, 
                         "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
-                        "hl": "tr"
+                        "hl": "tr",
+                        "gl": "tr"
                     }
 
                     try:
@@ -306,7 +294,6 @@ with tab4:
                             
                             title = place.get("title", "").lower()
                             
-                            # SOSYAL MEDYA VE ZİNCİR MARKA FİLTRESİ
                             if any(x in website.lower() for x in sosyal_medya_platformlar): continue
                             if any(x in title for x in zincir_markalar): continue
                             
@@ -314,14 +301,18 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
+                            # ============================================
+                            # MATEMATİKSEL KESİN ÇÖZÜM: SADECE .TR UZANTILI SİTELER
+                            # ============================================
+                            if not domain.endswith('.tr'):
+                                continue  # .tr değilse direkt çöpe at
+                            # ============================================
+                            
                             if any(x in domain for x in sosyal_medya_platformlar): continue
                             if domain in seen_domains: continue
 
-                            status_text.text(f"📧 {domain} için e-posta aranıyor...")
-                            mail = eposta_bul(website)
-                            if not mail: 
-                                mail = f"info@{domain}"
-
+                            status_text.text(f"📧 {domain} için e-posta ve hata aranıyor...")
+                            
                             hata = 0
                             hata_detaylari = "Erişilebilirlik eksiklikleri"
                             try:
@@ -333,6 +324,14 @@ with tab4:
                                     hata = len(failures)
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
+
+                            # 0 hatalıysa atla (zaten kusursuz site)
+                            if hata == 0: 
+                                continue
+
+                            mail = eposta_bul(website)
+                            if not mail: 
+                                mail = f"info@{domain}"
 
                             tahmini_ucret = 1500 + (hata * 200)
 
@@ -351,20 +350,36 @@ with tab4:
                 if leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
-                    st.success(f"Sistem **{len(leads)}** adet gerçek işletme buldu.")
+                    st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
                 else:
                     st.warning("Uygun site bulunamadı.")
 
+    # ============================================
+    # SONUÇLARI MANUEL SİLME BUTONU İLE GÖSTER
+    # ============================================
     if not st.session_state.lead_results.empty:
-        st.write("### 📋 Bulunan Müşteri Adayları (Kart Görünümü)")
-        for idx, row in st.session_state.lead_results.iterrows():
+        st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
+        
+        for idx in st.session_state.lead_results.index:
+            row = st.session_state.lead_results.loc[idx]
             durum_ikon = "🔥" if row['Durum'] == "🔥 Sıcak" else "🟡"
-            with st.expander(f"{durum_ikon} {row['Şirket']} - {row['Domain']} ({row['Hata']} Hata)"):
-                st.write(f"**Sektör/Kelime:** {row['Sektör']}")
-                st.write(f"**E-posta:** {row['E-posta']}")
-                st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
-                st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}") # ================= 5. SEKME =================
-with tab5:
+            
+            col_info, col_sil = st.columns([5, 1])
+            
+            with col_info:
+                with st.expander(f"{durum_ikon} {row['Şirket']} - {row['Domain']} ({row['Hata']} Hata)"):
+                    st.write(f"**Sektör/Kelime:** {row['Sektör']}")
+                    st.write(f"**E-posta:** {row['E-posta']}")
+                    st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
+                    st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}")
+            
+            with col_sil:
+                st.write("")  # hizalama
+                st.write("")
+                if st.button("🗑️", key=f"sil_{idx}", help="Bu siteyi listeden sil"):
+                    st.session_state.lead_results = st.session_state.lead_results.drop(idx)
+                    persist("lead_results")
+                    st.rerun() with tab5:
     st.header("📧 E-posta Gönderimi ve Giden Kutusu Logları")
     st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı.")
 
@@ -508,7 +523,6 @@ Erişilebilirlik Danışmanı"""
         st.dataframe(st.session_state.gonderilenler_log.sort_values(by="Tarih", ascending=False), use_container_width=True)
     else: st.info("Henüz hiç e-posta gönderilmedi.")
 
-# ================= 6. SEKME: VİTRİN & HAKKIMDA =================
 with tab6:
     st.markdown("""
     <style>
