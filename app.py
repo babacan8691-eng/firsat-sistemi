@@ -212,7 +212,7 @@ with tab3:
                 try:
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                     url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
-                    r = requests.get(url, timeout=15)
+                    r = requests.get(url, timeout=20)
                     if r.status_code == 200:
                         data = r.json()
                         score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
@@ -267,8 +267,12 @@ with tab4:
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
+                
+                # TEŞHİS İÇİN SAYAÇLAR
+                bulunan_toplam = 0
+                api_hatali_siteler = 0
+                mukemmel_siteler = 0
 
-                # MATEMATİKSEL ÇÖZÜM: "Tüm Türkiye" seçildiyse en büyük 5 şehre böl
                 if sehir_input == "Tüm Türkiye":
                     aranacak_konumlar = ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"]
                 else:
@@ -289,7 +293,14 @@ with tab4:
 
                         try:
                             res = GoogleSearch(params).get_dict()
+                            
+                            # TEŞHİS: API Hata verdi mi?
+                            if "error" in res:
+                                st.error(f"SerpApi Hatası: {res['error']} (Limitiniz dolmuş olabilir)")
+                                continue
+                                
                             local_results = res.get("local_results") or res.get("place_results") or []
+                            bulunan_toplam += len(local_results)
                             
                             count = 0
                             for place in local_results:
@@ -310,21 +321,30 @@ with tab4:
                                 if any(x in domain for x in sosyal_medya_platformlar): continue
                                 if domain in seen_domains: continue
 
-                                status_text.text(f"📧 {domain} için e-posta ve hata aranıyor...")
+                                status_text.text(f"📧 {domain} için analiz yapılıyor...")
                                 
                                 hata = 0
                                 hata_detaylari = "Erişilebilirlik eksiklikleri"
+                                api_basarili = False
                                 try:
                                     api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                                    rr = requests.get(api, timeout=10)
+                                    rr = requests.get(api, timeout=20)
                                     if rr.status_code == 200:
+                                        api_basarili = True
                                         audits = rr.json()['lighthouseResult']['audits']
                                         failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                                         hata = len(failures)
                                         if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                                 except Exception: pass
 
-                                if hata == 0: continue
+                                # Eğer API zaman aşımına uğradıysa veya çöktüyse boş geçme, listeye ekle
+                                if not api_basarili:
+                                    api_hatali_siteler += 1
+                                    hata = 5 # Varsayılan bir hata puanı verelim
+                                    hata_detaylari = "Google API yanıt vermedi (Site manuel incelenmeli)"
+                                elif hata == 0:
+                                    mukemmel_siteler += 1
+                                    continue
 
                                 mail = eposta_bul(website)
                                 if not mail: mail = f"info@{domain}"
@@ -345,12 +365,15 @@ with tab4:
                 status_text.text("✅ Tarama tamamlandı!")
                 time.sleep(1)
                 
+                # TEŞHİS RAPORU
+                st.info(f"📊 **Tarama Raporu:** Haritalar'dan toplam {bulunan_toplam} işletme bulundu. | {mukemmel_siteler} site 0 hatalı olduğu için elendi. | {api_hatali_siteler} siteye API yanıt vermediği için listeye eklendi.")
+                
                 if leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
                     st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
                 else:
-                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı. Lütfen farklı bir sektör deneyin.")
+                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
