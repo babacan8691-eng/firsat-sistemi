@@ -176,7 +176,7 @@ with tab2:
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url, headers=headers, timeout=3) 
+        r = requests.get(url, headers=headers, timeout=5) 
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
         fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
@@ -190,7 +190,7 @@ def eposta_bul(url):
         for path in ['/iletisim', '/contact']:
             contact_url = url.rstrip('/') + path
             try:
-                r2 = requests.get(contact_url, headers=headers, timeout=2)
+                r2 = requests.get(contact_url, headers=headers, timeout=3)
                 emails2 = re.findall(email_pattern, r2.text)
                 for em in emails2:
                     em_lower = em.lower()
@@ -258,7 +258,9 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                limit = 5
+                # LİMİT ARTIRILDI: İlk 5 sonuç kusursuz olsa bile, 20'ye kadar tarayacak
+                limit = 20
+                
                 zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
                 sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
 
@@ -292,8 +294,7 @@ with tab4:
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
-                            # .TR MATEMATİKSEL FİLTRESİ
-                            if not domain.endswith('.tr'): continue
+                            # .TR ZORUNLULUĞU KALDIRILDI. Google Maps zaten Türkiye'den getiriyor.
                             
                             if any(x in domain for x in sosyal_medya_platformlar): continue
                             if domain in seen_domains: continue
@@ -336,7 +337,7 @@ with tab4:
                     persist("lead_results")
                     st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
                 else:
-                    st.warning("Uygun site bulunamadı.")
+                    st.warning("Uygun site bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
