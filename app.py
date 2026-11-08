@@ -13,7 +13,6 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from pathlib import Path
 from bs4 import BeautifulSoup
-from serpapi import GoogleSearch
 
 st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
 
@@ -96,9 +95,12 @@ def persist(anahtar):
 init_state()
 df = st.session_state.musteri_df
 
-# ================= GMAIL =================
+# ================= API ANAHTARLARI =================
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
+
+# Google Cloud Console'dan alınan ve Places API ile PageSpeed API'nin etkinleştirildiği anahtar
+GOOGLE_API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
 
 # ================= HATA ÇEVİRİ =================
 hata_sozlugu = {
@@ -125,7 +127,7 @@ def hatayi_cevir(hata_ingilizce):
         if key.lower() in hata_ingilizce.lower(): return val
     return f"{hata_ingilizce}"
 
-# ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+# ================= YARDIMCI FONKSİYONLAR =================
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -153,6 +155,30 @@ def eposta_bul(url):
             except: continue
     except Exception: pass
     return None
+
+def google_places_text_search(query, max_results=20):
+    """Google Places API (New) Text Search kullanarak işletme arar."""
+    url = "https://places.googleapis.com/v1/places:searchText"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": "places.displayName,places.websiteUri,places.formattedAddress"
+    }
+    body = {
+        "textQuery": query,
+        "languageCode": "tr",
+        "maxResultCount": max_results
+    }
+    try:
+        response = requests.post(url, headers=headers, json=body, timeout=15)
+        if response.status_code == 200:
+            return response.json().get("places", [])
+        else:
+            st.error(f"Google Places API Hatası: {response.status_code} - {response.text}")
+            return []
+    except Exception as e:
+        st.error(f"Google Places API Bağlantı Hatası: {e}")
+        return []
 
 # ================= SEKMELER =================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -210,8 +236,7 @@ with tab3:
             if not hedef_url.startswith("http"): hedef_url = "https://" + hedef_url
             with st.spinner("Taranıyor..."):
                 try:
-                    API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                    url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
+                    url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={GOOGLE_API_KEY}"
                     r = requests.get(url, timeout=20)
                     if r.status_code == 200:
                         data = r.json()
@@ -226,7 +251,7 @@ with tab3:
 
 # ================= 4. SEKME =================
 with tab4:
-    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (Haritalar Modu)")
+    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (Google Places API)")
     
     col_temizle1, col_temizle2 = st.columns([1, 4])
     with col_temizle1:
@@ -258,8 +283,7 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                limit = 30 
-                
+                # ZİNCİR MARKALAR VE SOSYAL MEDYA FİLTRESİ
                 zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
                 sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
 
@@ -267,11 +291,6 @@ with tab4:
                 seen_domains = set()
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                
-                # TEŞHİS İÇİN SAYAÇLAR
-                bulunan_toplam = 0
-                api_hatali_siteler = 0
-                mukemmel_siteler = 0
 
                 if sehir_input == "Tüm Türkiye":
                     aranacak_konumlar = ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"]
@@ -279,101 +298,71 @@ with tab4:
                     aranacak_konumlar = [sehir_input]
 
                 for idx, kelime in enumerate(arama_kelimeleri):
-                    status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
+                    status_text.text(f"🔍 Google Places'te '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
                     for konum in aranacak_konumlar:
                         query = f'{kelime} {konum}'
-                        params = {
-                            "engine": "google_maps", 
-                            "q": query, 
-                            "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
-                            "hl": "tr",
-                            "gl": "tr"
-                        }
-
-                        try:
-                            res = GoogleSearch(params).get_dict()
-                            
-                            # TEŞHİS: API Hata verdi mi?
-                            if "error" in res:
-                                st.error(f"SerpApi Hatası: {res['error']} (Limitiniz dolmuş olabilir)")
-                                continue
-                                
-                            local_results = res.get("local_results") or res.get("place_results") or []
-                            bulunan_toplam += len(local_results)
-                            
-                            count = 0
-                            for place in local_results:
-                                if count >= limit: break
-                                
-                                website = place.get("website", "")
-                                if not website: continue
-                                
-                                title = place.get("title", "").lower()
-                                
-                                if any(x in website.lower() for x in sosyal_medya_platformlar): continue
-                                if any(x in title for x in zincir_markalar): continue
-                                
-                                domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
-                                if not domain_match: continue
-                                domain = domain_match.group(1).lower()
-                                
-                                if any(x in domain for x in sosyal_medya_platformlar): continue
-                                if domain in seen_domains: continue
-
-                                status_text.text(f"📧 {domain} için analiz yapılıyor...")
-                                
-                                hata = 0
-                                hata_detaylari = "Erişilebilirlik eksiklikleri"
-                                api_basarili = False
-                                try:
-                                    api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                                    rr = requests.get(api, timeout=20)
-                                    if rr.status_code == 200:
-                                        api_basarili = True
-                                        audits = rr.json()['lighthouseResult']['audits']
-                                        failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                                        hata = len(failures)
-                                        if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
-                                except Exception: pass
-
-                                # Eğer API zaman aşımına uğradıysa veya çöktüyse boş geçme, listeye ekle
-                                if not api_basarili:
-                                    api_hatali_siteler += 1
-                                    hata = 5 # Varsayılan bir hata puanı verelim
-                                    hata_detaylari = "Google API yanıt vermedi (Site manuel incelenmeli)"
-                                elif hata == 0:
-                                    mukemmel_siteler += 1
-                                    continue
-
-                                mail = eposta_bul(website)
-                                if not mail: mail = f"info@{domain}"
-
-                                tahmini_ucret = 1500 + (hata * 200)
-
-                                leads.append({
-                                    "Sektör": kelime, "Şirket": place.get("title", domain)[:30], "Domain": domain, "Hata": hata,
-                                    "Tahmini Ücret (TL)": tahmini_ucret, "Hata Detayı (TR)": hata_detaylari, "E-posta": mail,
-                                    "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
-                                })
-                                seen_domains.add(domain)
-                                count += 1
-                        except Exception: pass
                         
+                        places = google_places_text_search(query, max_results=20)
+                        
+                        count = 0
+                        for place in places:
+                            website = place.get("websiteUri", "")
+                            if not website: continue
+                            
+                            title = place.get("displayName", {}).get("text", "").lower()
+                            
+                            if any(x in website.lower() for x in sosyal_medya_platformlar): continue
+                            if any(x in title for x in zincir_markalar): continue
+                            
+                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
+                            if not domain_match: continue
+                            domain = domain_match.group(1).lower()
+                            
+                            if any(x in domain for x in sosyal_medya_platformlar): continue
+                            if domain in seen_domains: continue
+
+                            status_text.text(f"📧 {domain} için e-posta ve hata aranıyor...")
+                            
+                            hata = 0
+                            hata_detaylari = "Erişilebilirlik eksiklikleri"
+                            try:
+                                api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key={GOOGLE_API_KEY}"
+                                rr = requests.get(api, timeout=15)
+                                if rr.status_code == 200:
+                                    audits = rr.json()['lighthouseResult']['audits']
+                                    failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
+                                    hata = len(failures)
+                                    if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
+                            except Exception: pass
+
+                            # 0 HATALI SİTELERİ ATLA (Bize lazım değiller)
+                            if hata == 0: continue
+
+                            mail = eposta_bul(website)
+                            if not mail: mail = f"info@{domain}"
+
+                            tahmini_ucret = 1500 + (hata * 200)
+
+                            leads.append({
+                                "Sektör": kelime, "Şirket": place.get("displayName", {}).get("text", domain)[:30], "Domain": domain, "Hata": hata,
+                                "Tahmini Ücret (TL)": tahmini_ucret, "Hata Detayı (TR)": hata_detaylari, "E-posta": mail,
+                                "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
+                            })
+                            seen_domains.add(domain)
+                            count += 1
+                            
                     progress_bar.progress((idx + 1) / len(arama_kelimeleri))
 
                 status_text.text("✅ Tarama tamamlandı!")
                 time.sleep(1)
-                
-                # TEŞHİS RAPORU
-                st.info(f"📊 **Tarama Raporu:** Haritalar'dan toplam {bulunan_toplam} işletme bulundu. | {mukemmel_siteler} site 0 hatalı olduğu için elendi. | {api_hatali_siteler} siteye API yanıt vermediği için listeye eklendi.")
                 
                 if leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
                     st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
                 else:
-                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı.")
+                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
