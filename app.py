@@ -100,7 +100,7 @@ df = st.session_state.musteri_df
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 
-# ================= GENİŞLETİLMİŞ HATA ÇEVİRİ =================
+# ================= HATA ÇEVİRİ =================
 hata_sozlugu = {
     "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele 'alt' metni ekleyin.",
     "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Hiyerarşik sırayla kullanın.",
@@ -124,6 +124,35 @@ def hatayi_cevir(hata_ingilizce):
     for key, val in hata_sozlugu.items():
         if key.lower() in hata_ingilizce.lower(): return val
     return f"{hata_ingilizce}"
+
+# ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
+def eposta_bul(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        r = requests.get(url, headers=headers, timeout=5) 
+        email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
+        emails = re.findall(email_pattern, r.text)
+        fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
+        
+        for em in emails:
+            em_lower = em.lower()
+            if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                if not any(fake in em_lower for fake in fake_emails):
+                    return em
+                    
+        for path in ['/iletisim', '/contact']:
+            contact_url = url.rstrip('/') + path
+            try:
+                r2 = requests.get(contact_url, headers=headers, timeout=3)
+                emails2 = re.findall(email_pattern, r2.text)
+                for em in emails2:
+                    em_lower = em.lower()
+                    if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
+                        if not any(fake in em_lower for fake in fake_emails):
+                            return em
+            except: continue
+    except Exception: pass
+    return None
 
 # ================= SEKMELER =================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -172,36 +201,7 @@ with tab2:
             st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
             persist("musteri_df")
             st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= YARDIMCI FONKSİYON: E-POSTA KAZIMA =================
-def eposta_bul(url):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url, headers=headers, timeout=5) 
-        email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
-        emails = re.findall(email_pattern, r.text)
-        fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
-        
-        for em in emails:
-            em_lower = em.lower()
-            if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                if not any(fake in em_lower for fake in fake_emails):
-                    return em
-                    
-        for path in ['/iletisim', '/contact']:
-            contact_url = url.rstrip('/') + path
-            try:
-                r2 = requests.get(contact_url, headers=headers, timeout=3)
-                emails2 = re.findall(email_pattern, r2.text)
-                for em in emails2:
-                    em_lower = em.lower()
-                    if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                        if not any(fake in em_lower for fake in fake_emails):
-                            return em
-            except: continue
-    except Exception: pass
-    return None
-
-# ================= 3. SEKME =================
+    st.dataframe(df, use_container_width=True) # ================= 3. SEKME =================
 with tab3:
     st.header("Gerçek Erişilebilirlik Tarayıcı")
     with st.form("tarama_formu"):
@@ -246,7 +246,7 @@ with tab4:
         else:
             st.info("Genel arama yaparken şehir veya sektör sınırı yoktur.")
             serbest_metin = st.text_input("Aramak istediğiniz kelime veya cümle")
-            sehir_input = "Türkiye"
+            sehir_input = "Tüm Türkiye"
             arama_kelimeleri = [serbest_metin] if serbest_metin else []
             
         baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
@@ -258,8 +258,7 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # LİMİT ARTIRILDI: İlk 5 sonuç kusursuz olsa bile, 20'ye kadar tarayacak
-                limit = 20
+                limit = 30 # Limit artırıldı, böylece boş dönmez
                 
                 zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
                 sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
@@ -272,12 +271,25 @@ with tab4:
                 for idx, kelime in enumerate(arama_kelimeleri):
                     status_text.text(f"🗺️ Haritalar'da '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
-                    query = f'{kelime} Türkiye' if sehir_input == "Tüm Türkiye" else f'{kelime} {sehir_input}'
-                    params = {"engine": "google_maps", "q": query, "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", "hl": "tr", "gl": "tr"}
+                    # HATA DÜZELTİLDİ: "Tüm Türkiye" seçildiğinde "Türkiye" kelimesini aramıyoruz.
+                    if sehir_input == "Tüm Türkiye":
+                        query = kelime 
+                    else:
+                        query = f'{kelime} {sehir_input}'
+
+                    params = {
+                        "engine": "google_maps", 
+                        "q": query, 
+                        "api_key": "a3852fdf1527c40dc04fe73bb9a5b7c913e69a9972cf7ef563fc8a42c64e617c", 
+                        "hl": "tr",
+                        "gl": "tr"
+                    }
 
                     try:
                         res = GoogleSearch(params).get_dict()
-                        local_results = res.get("local_results", [])
+                        
+                        # HATA DÜZELTİLDİ: local_results veya place_results kontrolü
+                        local_results = res.get("local_results") or res.get("place_results") or []
                         
                         count = 0
                         for place in local_results:
@@ -287,14 +299,13 @@ with tab4:
                             if not website: continue
                             
                             title = place.get("title", "").lower()
+                            
                             if any(x in website.lower() for x in sosyal_medya_platformlar): continue
                             if any(x in title for x in zincir_markalar): continue
                             
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
-                            
-                            # .TR ZORUNLULUĞU KALDIRILDI. Google Maps zaten Türkiye'den getiriyor.
                             
                             if any(x in domain for x in sosyal_medya_platformlar): continue
                             if domain in seen_domains: continue
