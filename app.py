@@ -95,11 +95,9 @@ def persist(anahtar):
 init_state()
 df = st.session_state.musteri_df
 
-# ================= API ANAHTARLARI =================
+# ================= API & GMAIL =================
 GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
-
-# Google Cloud Console'dan alınan ve Places API ile PageSpeed API'nin etkinleştirildiği anahtar
 GOOGLE_API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
 
 # ================= HATA ÇEVİRİ =================
@@ -156,28 +154,44 @@ def eposta_bul(url):
     except Exception: pass
     return None
 
-def google_places_text_search(query, max_results=20):
-    """Google Places API (New) Text Search kullanarak işletme arar."""
-    url = "https://places.googleapis.com/v1/places:searchText"
-    headers = {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": "places.displayName,places.websiteUri,places.formattedAddress"
+def overpass_search(sehir, sektor):
+    """OpenStreetMap (Overpass API) üzerinden işletme arar."""
+    sehir_map = {
+        "İstanbul": "İstanbul", "Ankara": "Ankara", "İzmir": "İzmir", 
+        "Bursa": "Bursa", "Antalya": "Antalya"
     }
-    body = {
-        "textQuery": query,
-        "languageCode": "tr",
-        "maxResultCount": max_results
+    
+    etiket_map = {
+        "klinik": '["amenity"="clinic"]', "otel": '["tourism"="hotel"]',
+        "emlak": '["office"="estate_agent"]', "butik": '["shop"="clothes"]',
+        "restoran": '["amenity"="restaurant"]', "diş kliniği": '["amenity"="dentist"]',
+        "avukat": '["office"="lawyer"]', "kuaför": '["shop"="hairdresser"]',
+        "spor salonu": '["leisure"="fitness_centre"]', "veteriner": '["amenity"="veterinary"]',
+        "e-ticaret": '["shop"]', "güzellik merkezi": '["shop"="beauty"]',
+        "estetik": '["healthcare"="cosmetic"]', "mobilya": '["shop"="furniture"]',
+        "oto galeri": '["shop"="car"]', "düğün salonu": '["amenity"="events_venue"]'
     }
+    
+    tag = etiket_map.get(sektor, f'["name"~"{sektor}",i]')
+    city_name = sehir_map.get(sehir, sehir)
+    
+    query = f"""
+    [out:json][timeout:30];
+    area["name"~"{city_name}"]->.searchArea;
+    (
+      node{tag}(area.searchArea);
+      way{tag}(area.searchArea);
+    );
+    out center tags;
+    """
+    
+    url = "https://overpass-api.de/api/interpreter"
     try:
-        response = requests.post(url, headers=headers, json=body, timeout=15)
+        response = requests.post(url, data={'data': query}, timeout=35)
         if response.status_code == 200:
-            return response.json().get("places", [])
-        else:
-            st.error(f"Google Places API Hatası: {response.status_code} - {response.text}")
-            return []
-    except Exception as e:
-        st.error(f"Google Places API Bağlantı Hatası: {e}")
+            return response.json().get("elements", [])
+        return []
+    except Exception:
         return []
 
 # ================= SEKMELER =================
@@ -251,7 +265,7 @@ with tab3:
 
 # ================= 4. SEKME =================
 with tab4:
-    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (Google Places API)")
+    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (OpenStreetMap Modu)")
     
     col_temizle1, col_temizle2 = st.columns([1, 4])
     with col_temizle1:
@@ -283,7 +297,6 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # ZİNCİR MARKALAR VE SOSYAL MEDYA FİLTRESİ
                 zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
                 sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
 
@@ -298,19 +311,18 @@ with tab4:
                     aranacak_konumlar = [sehir_input]
 
                 for idx, kelime in enumerate(arama_kelimeleri):
-                    status_text.text(f"🔍 Google Places'te '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
+                    status_text.text(f"🔍 OSM'de '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
                     
                     for konum in aranacak_konumlar:
-                        query = f'{kelime} {konum}'
-                        
-                        places = google_places_text_search(query, max_results=20)
+                        places = overpass_search(konum, kelime)
                         
                         count = 0
                         for place in places:
-                            website = place.get("websiteUri", "")
+                            tags = place.get("tags", {})
+                            website = tags.get("website", tags.get("contact:website", tags.get("url", "")))
                             if not website: continue
                             
-                            title = place.get("displayName", {}).get("text", "").lower()
+                            title = tags.get("name", "").lower()
                             
                             if any(x in website.lower() for x in sosyal_medya_platformlar): continue
                             if any(x in title for x in zincir_markalar): continue
@@ -336,7 +348,6 @@ with tab4:
                                     if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
                             except Exception: pass
 
-                            # 0 HATALI SİTELERİ ATLA (Bize lazım değiller)
                             if hata == 0: continue
 
                             mail = eposta_bul(website)
@@ -345,7 +356,7 @@ with tab4:
                             tahmini_ucret = 1500 + (hata * 200)
 
                             leads.append({
-                                "Sektör": kelime, "Şirket": place.get("displayName", {}).get("text", domain)[:30], "Domain": domain, "Hata": hata,
+                                "Sektör": kelime, "Şirket": tags.get("name", domain)[:30], "Domain": domain, "Hata": hata,
                                 "Tahmini Ücret (TL)": tahmini_ucret, "Hata Detayı (TR)": hata_detaylari, "E-posta": mail,
                                 "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
                             })
@@ -360,9 +371,9 @@ with tab4:
                 if leads:
                     st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
                     persist("lead_results")
-                    st.success(f"Sistem **{len(leads)}** adet gerçek Türk işletmesi buldu.")
+                    st.success(f"Sistem **{len(leads)}** adet gerçek işletme buldu.")
                 else:
-                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı. Lütfen farklı bir sektör veya şehir deneyin.")
+                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı. Lütfen farklı bir sektör deneyin.")
 
     if not st.session_state.lead_results.empty:
         st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
