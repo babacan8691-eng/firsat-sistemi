@@ -177,7 +177,6 @@ with tab2:
 def eposta_bul(url):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        # HIZ OPTİMİZASYONU: Yanıt gelmezse 3 saniyede bırak, sistemi kilitleme
         r = requests.get(url, headers=headers, timeout=3) 
         email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
         emails = re.findall(email_pattern, r.text)
@@ -192,7 +191,6 @@ def eposta_bul(url):
         for path in ['/iletisim', '/contact']:
             contact_url = url.rstrip('/') + path
             try:
-                # İletişim sayfası için de 2 saniye bekle
                 r2 = requests.get(contact_url, headers=headers, timeout=2)
                 emails2 = re.findall(email_pattern, r2.text)
                 for em in emails2:
@@ -215,7 +213,7 @@ with tab3:
                 try:
                     API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
                     url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={API_KEY}"
-                    r = requests.get(url, timeout=15) # Hız için 15 sn
+                    r = requests.get(url, timeout=15)
                     if r.status_code == 200:
                         data = r.json()
                         score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
@@ -261,11 +259,21 @@ with tab4:
             if not arama_kelimeleri:
                 st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
             else:
-                # MATEMATİKSEL KESİN LİMİT: Çok fazla site gelirse donmasın diye limit düşürüldü
                 limit = 4 
                 
-                # ZİNCİR MARKALARI (Sistemi yormamak için e-posta aramayı atlayacağız)
-                zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western"]
+                # ULUSLARARASI ZİNCİR MARKALAR VE ÜNİVERSİTELER
+                zincir_markalar = [
+                    "wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", 
+                    "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", 
+                    "university", "üniversitesi", "college", "kolej", "hastanesi.com"
+                ]
+                
+                # SOSYAL MEDYA VE İLAN/REZERVASYON UZANTILARI (Kesin Çöp)
+                sosyal_medya_platformlar = [
+                    "facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", 
+                    "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com",
+                    "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"
+                ]
 
                 leads = []
                 seen_domains = set()
@@ -298,26 +306,27 @@ with tab4:
                             
                             title = place.get("title", "").lower()
                             
+                            # SOSYAL MEDYA VE ZİNCİR MARKA FİLTRESİ
+                            if any(x in website.lower() for x in sosyal_medya_platformlar): continue
+                            if any(x in title for x in zincir_markalar): continue
+                            
                             domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
                             if not domain_match: continue
                             domain = domain_match.group(1).lower()
                             
+                            if any(x in domain for x in sosyal_medya_platformlar): continue
                             if domain in seen_domains: continue
 
-                            # EĞER ZİNCİR MARKAYSA HİÇ E-POSTA ARAMA, DİREKT ATLA (Hız için)
-                            if any(marka in domain or marka in title for marka in zincir_markalar):
+                            status_text.text(f"📧 {domain} için e-posta aranıyor...")
+                            mail = eposta_bul(website)
+                            if not mail: 
                                 mail = f"info@{domain}"
-                            else:
-                                status_text.text(f"📧 {domain} için e-posta aranıyor...")
-                                mail = eposta_bul(website)
-                                if not mail: 
-                                    mail = f"info@{domain}"
 
                             hata = 0
                             hata_detaylari = "Erişilebilirlik eksiklikleri"
                             try:
                                 api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key=AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-                                rr = requests.get(api, timeout=10) # Hız için 10 sn
+                                rr = requests.get(api, timeout=10)
                                 if rr.status_code == 200:
                                     audits = rr.json()['lighthouseResult']['audits']
                                     failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
