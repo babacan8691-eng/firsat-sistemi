@@ -1,606 +1,231 @@
 import streamlit as st
 import pandas as pd
-import requests
-import time
-import re
+import sqlite3
 import os
-import json
-import smtplib
-import imaplib
-import email
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-from pathlib import Path
-from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="Erişilebilirlik Paneli", layout="wide")
+# --- SAYFA AYARLARI ---
+st.set_page_config(page_title="Başvuru & Kazanç Takip Paneli", layout="wide")
 
-# ================= GİRİŞ EKRANI =================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# --- VERİTABANI KURULUMU ---
+DB_FILE = "tracker.db"
 
-if not st.session_state.logged_in:
-    st.title("🔐 Sisteme Giriş")
-    st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
-    with st.form("login_form"):
-        kullanici_adi = st.text_input("Kullanıcı Adı").strip()
-        sifre = st.text_input("Şifre", type="password").strip()
-        submit = st.form_submit_button("Giriş Yap")
-        if submit:
-            if kullanici_adi == "Cuma Babacan" and sifre == "784512":
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Hatalı kullanıcı adı veya şifre!")
-    st.stop()
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Platformlar Tablosu
+    c.execute('''CREATE TABLE IF NOT EXISTS platforms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform_name TEXT NOT NULL,
+                    website TEXT,
+                    payment_method TEXT,
+                    application_date TEXT,
+                    status TEXT DEFAULT 'Beklemede',
+                    notes TEXT
+                )''')
+    # Kazançlar Tablosu
+    c.execute('''CREATE TABLE IF NOT EXISTS earnings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform_id INTEGER,
+                    amount REAL,
+                    currency TEXT,
+                    date TEXT,
+                    notes TEXT,
+                    FOREIGN KEY(platform_id) REFERENCES platforms(id)
+                )''')
+    conn.commit()
+    conn.close()
 
-st.title("♿ Erişilebilirlik Denetim ve Otomasyon Paneli")
+init_db()
 
-if st.sidebar.button("Çıkış Yap"):
-    st.session_state.logged_in = False
-    st.rerun()
+# --- VERİTABANI YARDIMCI FONKSİYONLARI ---
+def get_platforms():
+    conn = sqlite3.connect(DB_FILE)
+    df = pd.read_sql("SELECT * FROM platforms", conn)
+    conn.close()
+    return df
 
-# ================= KALICI DEPOLAMA =================
-SUPABASE_KEY = "sb_publishable_Au_J5CujUVFKyZzdx7zALw_5qLnIb3r"
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-DATA_DIR = Path("app_data")
-DATA_DIR.mkdir(exist_ok=True)
+def add_platform(name, website, payment, notes):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    c.execute("INSERT INTO platforms (platform_name, website, payment_method, application_date, notes) VALUES (?, ?, ?, ?, ?)",
+              (name, website, payment, date_str, notes))
+    conn.commit()
+    conn.close()
 
-def _get_sb():
-    if not SUPABASE_URL: return None
-    try:
-        from supabase import create_client
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception: return None
+def update_status(platform_id, new_status):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("UPDATE platforms SET status = ? WHERE id = ?", (new_status, platform_id))
+    conn.commit()
+    conn.close()
 
-_sb = _get_sb()
+def delete_platform(platform_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM platforms WHERE id = ?", (platform_id,))
+    conn.commit()
+    conn.close()
 
-KOLONLAR = {
-    "musteri_df": ["Müşteri Adı", "Web Sitesi", "Hata Sayısı", "Aylık Ücret (TL)"],
-    "lead_results": ["Sektör", "Şirket", "Domain", "Hata", "Tahmini Ücret (TL)", "Hata Detayı (TR)", "E-posta", "Durum"],
-    "gelen_yanitlar": ["Gönderen", "Konu", "Durum"],
-    "gonderilenler_log": ["Tarih", "Domain", "E-posta", "Hata Sayısı", "Talep Edilen Ücret", "Durum"],
-}
+def add_earning(platform_id, amount, currency, notes):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    c.execute("INSERT INTO earnings (platform_id, amount, currency, date, notes) VALUES (?, ?, ?, ?, ?)",
+              (platform_id, amount, currency, date_str, notes))
+    conn.commit()
+    conn.close()
 
-def _kaydet(anahtar, df):
-    try: df.to_json(DATA_DIR / f"{anahtar}.json", orient="records", force_ascii=False, indent=2)
-    except Exception: pass
-    if _sb:
-        try: _sb.table("app_state").upsert({"key": anahtar, "data": df.to_dict(orient="records")}).execute()
-        except Exception: pass
-
-def _yukle(anahtar):
-    kolonlar = KOLONLAR[anahtar]
-    if _sb:
-        try:
-            res = _sb.table("app_state").select("data").eq("key", anahtar).execute()
-            if res.data and res.data[0].get("data") is not None:
-                return pd.DataFrame(res.data[0]["data"], columns=kolonlar)
-        except Exception: pass
-    path = DATA_DIR / f"{anahtar}.json"
-    if path.exists():
-        try: return pd.read_json(path, orient="records").reindex(columns=kolonlar)
-        except Exception: pass
-    return pd.DataFrame(columns=kolonlar)
-
-def init_state():
-    for k in KOLONLAR:
-        if k not in st.session_state:
-            st.session_state[k] = _yukle(k)
-
-def persist(anahtar):
-    _kaydet(anahtar, st.session_state[anahtar])
-
-init_state()
-df = st.session_state.musteri_df
-
-# ================= API & GMAIL =================
-GMAIL_ADRESI = "babacan.8691@gmail.com"
-GMAIL_SIFRESI = "kuog wnba kcqu qgub"
-GOOGLE_API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-
-# ================= HATA ÇEVİRİ =================
-hata_sozlugu = {
-    "Image elements do not have [alt] attributes": "Görsellerde alternatif metin (alt etiketi) eksik. Çözüm: Her görsele 'alt' metni ekleyin.",
-    "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2, H3) sıralı değil. Çözüm: Hiyerarşik sırayla kullanın.",
-    "Elements with role=\"none\" or role=\"presentation\" have conflicts": "Sunum rolü çakışması. Çözüm: role=\"presentation\" etiketini kaldırın.",
-    "Touch targets do not have sufficient size or spacing": "Dokunmatik hedefler çok küçük. Çözüm: Butonları en az 48x48 piksel yapın.",
-    "Buttons do not have an accessible name": "Butonların adı yok. Çözüm: Butona metin veya aria-label ekleyin.",
-    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz. Çözüm: Metin/arka plan kontrastını artırın.",
-    "elements do not have a title": "Iframe başlığı eksik. Çözüm: Gömülü içeriklere 'title' ekleyin.",
-    "ARIA input fields do not have accessible names": "Form alanlarının adı yok. Çözüm: Giriş alanlarına 'label' ekleyin.",
-    "Links do not have a discernible name": "Linklerin anlaşılır adı yok. Çözüm: İkon linklere 'aria-label' ekleyin.",
-    "[aria-*] attributes do not have valid values": "Geçersiz ARIA değerleri. Çözüm: Değerleri standartlara uygun yapın.",
-    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik. Çözüm: İçeriği <main> içine alın.",
-    "List items": "Liste öğeleri yanlış yerde. Çözüm: <li> etiketlerini <ul> içine alın.",
-    "role=\"dialog\" or role=\"alertdialog\" do not have accessible names": "Açılır pencerelerin adı yok. Çözüm: 'aria-label' ekleyin.",
-    "<html> element does not have a [lang] attribute": "HTML dil özelliği (lang) eksik. Çözüm: <html lang='tr'> ekleyin.",
-    "[user-scalable=\"no\"]": "Mobilde büyütme engellenmiş. Çözüm: user-scalable=yes yapın.",
-    "Lists do not contain only <li> elements and script supporting elements": "Liste yapısı hatalı. Çözüm: <ul> veya <ol> içinde sadece <li> etiketleri kullanın."
-}
-
-def hatayi_cevir(hata_ingilizce):
-    for key, val in hata_sozlugu.items():
-        if key.lower() in hata_ingilizce.lower(): return val
-    return f"{hata_ingilizce}"
-
-# ================= YARDIMCI FONKSİYONLAR =================
-def eposta_bul(url):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(url, headers=headers, timeout=5) 
-        email_pattern = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b'
-        emails = re.findall(email_pattern, r.text)
-        fake_emails = ["ornek@", "example@", "test@", "email@", "adsoyad@", "mail@example", "info@example"]
-        
-        for em in emails:
-            em_lower = em.lower()
-            if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                if not any(fake in em_lower for fake in fake_emails):
-                    return em
-                    
-        for path in ['/iletisim', '/contact']:
-            contact_url = url.rstrip('/') + path
-            try:
-                r2 = requests.get(contact_url, headers=headers, timeout=3)
-                emails2 = re.findall(email_pattern, r2.text)
-                for em in emails2:
-                    em_lower = em.lower()
-                    if not em_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico')):
-                        if not any(fake in em_lower for fake in fake_emails):
-                            return em
-            except: continue
-    except Exception: pass
-    return None
-
-def overpass_search(sehir, sektor):
-    """OpenStreetMap (Overpass API) üzerinden işletme arar."""
-    sehir_map = {
-        "İstanbul": "İstanbul", "Ankara": "Ankara", "İzmir": "İzmir", 
-        "Bursa": "Bursa", "Antalya": "Antalya"
-    }
-    
-    etiket_map = {
-        "klinik": '["amenity"="clinic"]', "otel": '["tourism"="hotel"]',
-        "emlak": '["office"="estate_agent"]', "butik": '["shop"="clothes"]',
-        "restoran": '["amenity"="restaurant"]', "diş kliniği": '["amenity"="dentist"]',
-        "avukat": '["office"="lawyer"]', "kuaför": '["shop"="hairdresser"]',
-        "spor salonu": '["leisure"="fitness_centre"]', "veteriner": '["amenity"="veterinary"]',
-        "e-ticaret": '["shop"]', "güzellik merkezi": '["shop"="beauty"]',
-        "estetik": '["healthcare"="cosmetic"]', "mobilya": '["shop"="furniture"]',
-        "oto galeri": '["shop"="car"]', "düğün salonu": '["amenity"="events_venue"]'
-    }
-    
-    tag = etiket_map.get(sektor, f'["name"~"{sektor}",i]')
-    city_name = sehir_map.get(sehir, sehir)
-    
-    query = f"""
-    [out:json][timeout:30];
-    area["name"~"{city_name}"]->.searchArea;
-    (
-      node{tag}(area.searchArea);
-      way{tag}(area.searchArea);
-    );
-    out center tags;
+def get_earnings():
+    conn = sqlite3.connect(DB_FILE)
+    query = """
+    SELECT e.id, p.platform_name, e.amount, e.currency, e.date, e.notes
+    FROM earnings e
+    JOIN platforms p ON e.platform_id = p.id
+    ORDER BY e.date DESC
     """
-    
-    url = "https://overpass-api.de/api/interpreter"
-    try:
-        response = requests.post(url, data={'data': query}, timeout=35)
-        if response.status_code == 200:
-            return response.json().get("elements", [])
-        return []
-    except Exception:
-        return []
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
 
-# ================= SEKMELER =================
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Genel Bakış", "👥 Müşteri Yönetimi", "🔍 Gerçek Site Tarayıcı", 
-    "🤖 Otomatik Müşteri Bulucu", "📧 E-posta Otomasyonu & Loglar", "🌟 Vitrin & Hakkımda"
-])
+# --- ARAYÜZ ---
+st.title("🎯 Küresel Test Platformları - Başvuru & Kazanç Takip Sistemi")
+st.markdown("Bu panel, engelli bir birey olarak başvurduğunuz küresel test platformlarını, başvuru durumlarınızı ve kazançlarınızı tek bir yerden yönetmenizi sağlar.")
 
-# ================= 1. SEKME =================
+tab1, tab2, tab3 = st.tabs(["📋 Platformlar & Başvurular", "💰 Kazançlar", "📊 Genel Özet"])
+
+# --- TAB 1: PLATFORMLAR ---
 with tab1:
-    st.header("Sistem Özeti ve Başarı Skoru")
-    toplam_gonderilen = len(st.session_state.gonderilenler_log)
-    toplam_yanit = len(st.session_state.gelen_yanitlar)
-    olumlu_yanit_sayisi = 0
-    if not st.session_state.gelen_yanitlar.empty:
-        olumlu_yanit_sayisi = len(st.session_state.gelen_yanitlar[st.session_state.gelen_yanitlar["Durum"] == "🔥 Olumlu (Satışa Hazır)"])
-    basari_orani = (olumlu_yanit_sayisi / toplam_gonderilen * 100) if toplam_gonderilen > 0 else 0.0
-    potansiyel_gelir = st.session_state.gonderilenler_log["Talep Edilen Ücret"].sum() if not st.session_state.gonderilenler_log.empty else 0.0
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Gönderilen E-posta", toplam_gonderilen)
-    col2.metric("Gelen Yanıt", toplam_yanit)
-    col3.metric("Satış Başarı Oranı", f"% {basari_orani:.1f}")
-    col4.metric("Potansiyel Ciro (Tümü)", f"{potansiyel_gelir:,.2f} TL")
-
-    st.divider()
-    st.subheader("Kazanılan Müşteriler (Aktif Gelir)")
-    col_m1, col_m2 = st.columns(2)
-    toplam_gelir = df["Aylık Ücret (TL)"].sum() if not df.empty else 0.0
-    col_m1.metric("Aylık Garantili Gelir", f"{toplam_gelir:,.2f} TL")
-    col_m2.metric("Aktif Müşteri Sayısı", len(df))
-    if not df.empty:
-        st.bar_chart(df.set_index("Müşteri Adı")["Aylık Ücret (TL)"], color="#00C853")
-
-# ================= 2. SEKME =================
-with tab2:
-    st.header("Müşteri ve Denetim Kayıtları")
-    with st.form("ekleme_formu", clear_on_submit=True):
-        col_f1, col_f2 = st.columns(2)
-        musteri_adi = col_f1.text_input("Müşteri Adı")
-        web_sitesi = col_f2.text_input("Web Sitesi")
-        col_f3, col_f4 = st.columns(2)
-        hata_sayisi = col_f3.number_input("Hata Sayısı", min_value=0)
-        ucret = col_f4.number_input("Aylık Ücret (TL)", min_value=0.0)
-        if st.form_submit_button("Kaydet") and musteri_adi:
-            yeni = pd.DataFrame({"Müşteri Adı": [musteri_adi], "Web Sitesi": [web_sitesi], "Hata Sayısı": [hata_sayisi], "Aylık Ücret (TL)": [ucret]})
-            st.session_state.musteri_df = pd.concat([st.session_state.musteri_df, yeni], ignore_index=True)
-            persist("musteri_df")
-            st.rerun()
-    st.dataframe(df, use_container_width=True) # ================= 3. SEKME =================
-with tab3:
-    st.header("Gerçek Erişilebilirlik Tarayıcı")
-    with st.form("tarama_formu"):
-        hedef_url = st.text_input("Site Linki")
-        if st.form_submit_button("Tara"):
-            if not hedef_url.startswith("http"): hedef_url = "https://" + hedef_url
-            with st.spinner("Taranıyor..."):
-                try:
-                    url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={hedef_url}&category=accessibility&key={GOOGLE_API_KEY}"
-                    r = requests.get(url, timeout=20)
-                    if r.status_code == 200:
-                        data = r.json()
-                        score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
-                        audits = data['lighthouseResult']['audits']
-                        failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                        st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
-                        st.metric("Kritik Hata", len(failures))
-                        st.write("**Türkçe Hata Detayları ve Çözümleri:**")
-                        for hata in failures[:5]: st.info(hatayi_cevir(hata))
-                except Exception: st.error("Hata oluştu.")
-
-# ================= 4. SEKME =================
-with tab4:
-    st.header("🤖 Tek Tıkla Otomatik Müşteri Bulucu (OpenStreetMap Modu)")
+    st.header("Platform Listesi")
     
-    col_temizle1, col_temizle2 = st.columns([1, 4])
-    with col_temizle1:
-        if st.button("🗑️ Listeyi Temizle"):
-            st.session_state.lead_results = pd.DataFrame()
-            persist("lead_results")
-            st.rerun()
+    # Yeni platform ekleme formu
+    with st.expander("➕ Yeni Platform Ekle"):
+        with st.form("add_platform_form"):
+            col1, col2 = st.columns(2)
+            name = col1.text_input("Platform Adı (örn: Testlio, uTest)")
+            website = col2.text_input("Web Sitesi (örn: testlio.com)")
             
-    arama_modu = st.radio("Nasıl Arama Yapmak İstersiniz?", ["Hedefli Arama (Sektör + Şehir)", "Genel Arama (Serbest Metin)"], horizontal=True)
-    
-    with st.form("otomatik_avci"):
-        if arama_modu == "Hedefli Arama (Sektör + Şehir)":
-            sehir_input = st.selectbox("Hangi Şehirde Aransın?", ["Tüm Türkiye", "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"])
-            tum_sektorler = ["klinik", "otel", "emlak", "butik", "restoran", "diş kliniği", "avukat", "kuaför", "spor salonu", "veteriner", "e-ticaret", "güzellik merkezi", "estetik", "mobilya", "oto galeri", "düğün salonu"]
-            secili_sektorler = st.multiselect("Hangi Sektörler Taranacak?", tum_sektorler, default=tum_sektorler)
-            arama_kelimeleri = secili_sektorler
-        else:
-            st.info("Genel arama yaparken şehir veya sektör sınırı yoktur.")
-            serbest_metin = st.text_input("Aramak istediğiniz kelime veya cümle")
-            sehir_input = "Tüm Türkiye"
-            arama_kelimeleri = [serbest_metin] if serbest_metin else []
+            col3, col4 = st.columns(2)
+            payment = col3.selectbox("Ödeme Yöntemi", ["PayPal", "Payoneer", "Banka Havalesi", "Wise", "Diğer"])
+            notes = col4.text_input("Notlar (isteğe bağlı)")
             
-        baslat_butonu = st.form_submit_button("🚀 Tek Tıkla Taramayı Başlat")
-
-        if baslat_butonu:
-            st.session_state.lead_results = pd.DataFrame()
-            persist("lead_results")
-            
-            if not arama_kelimeleri:
-                st.warning("Lütfen en az bir sektör veya arama kelimesi seçin.")
-            else:
-                zincir_markalar = ["wyndham", "hilton", "marriott", "radisson", "ibis", "novotel", "sheraton", "best western", "choicehotels", "ihg", "eosfitness", "bluepearlvet", "university", "üniversitesi", "college", "kolej"]
-                sosyal_medya_platformlar = ["facebook.com", "instagram.com", "linktr.ee", "as.me", "sahibinden.com", "company.site", "chrone.work", "hepsiemlak.com", "twitter.com", "x.com", "youtube.com", "tiktok.com", "wa.me", "whatsapp.com", "g.co", "apple.com", "play.google.com"]
-
-                leads = []
-                seen_domains = set()
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                if sehir_input == "Tüm Türkiye":
-                    aranacak_konumlar = ["İstanbul", "Ankara", "İzmir", "Bursa", "Antalya"]
+            submitted = st.form_submit_button("Platformu Kaydet")
+            if submitted:
+                if name:
+                    add_platform(name, website, payment, notes)
+                    st.success(f"✅ {name} başarıyla eklendi!")
+                    st.rerun()
                 else:
-                    aranacak_konumlar = [sehir_input]
+                    st.error("Platform adı zorunludur.")
 
-                for idx, kelime in enumerate(arama_kelimeleri):
-                    status_text.text(f"🔍 OSM'de '{kelime}' taranıyor... ({idx+1}/{len(arama_kelimeleri)})")
-                    
-                    for konum in aranacak_konumlar:
-                        places = overpass_search(konum, kelime)
-                        
-                        count = 0
-                        for place in places:
-                            tags = place.get("tags", {})
-                            website = tags.get("website", tags.get("contact:website", tags.get("url", "")))
-                            if not website: continue
-                            
-                            title = tags.get("name", "").lower()
-                            
-                            if any(x in website.lower() for x in sosyal_medya_platformlar): continue
-                            if any(x in title for x in zincir_markalar): continue
-                            
-                            domain_match = re.search(r'https?://(?:www\.)?([^/]+)', website)
-                            if not domain_match: continue
-                            domain = domain_match.group(1).lower()
-                            
-                            if any(x in domain for x in sosyal_medya_platformlar): continue
-                            if domain in seen_domains: continue
-
-                            status_text.text(f"📧 {domain} için e-posta ve hata aranıyor...")
-                            
-                            hata = 0
-                            hata_detaylari = "Erişilebilirlik eksiklikleri"
-                            try:
-                                api = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={website}&category=accessibility&key={GOOGLE_API_KEY}"
-                                rr = requests.get(api, timeout=15)
-                                if rr.status_code == 200:
-                                    audits = rr.json()['lighthouseResult']['audits']
-                                    failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                                    hata = len(failures)
-                                    if failures: hata_detaylari = " ... ".join([hatayi_cevir(h) for h in failures[:2]])
-                            except Exception: pass
-
-                            if hata == 0: continue
-
-                            mail = eposta_bul(website)
-                            if not mail: mail = f"info@{domain}"
-
-                            tahmini_ucret = 1500 + (hata * 200)
-
-                            leads.append({
-                                "Sektör": kelime, "Şirket": tags.get("name", domain)[:30], "Domain": domain, "Hata": hata,
-                                "Tahmini Ücret (TL)": tahmini_ucret, "Hata Detayı (TR)": hata_detaylari, "E-posta": mail,
-                                "Durum": "🔥 Sıcak" if hata >= 8 else "Ilık"
-                            })
-                            seen_domains.add(domain)
-                            count += 1
-                            
-                    progress_bar.progress((idx + 1) / len(arama_kelimeleri))
-
-                status_text.text("✅ Tarama tamamlandı!")
-                time.sleep(1)
+    # Mevcut platformları listeleme
+    df_platforms = get_platforms()
+    if not df_platforms.empty:
+        for index, row in df_platforms.iterrows():
+            with st.container(border=True):
+                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                 
-                if leads:
-                    st.session_state.lead_results = pd.DataFrame(leads).sort_values("Hata", ascending=False)
-                    persist("lead_results")
-                    st.success(f"Sistem **{len(leads)}** adet gerçek işletme buldu.")
-                else:
-                    st.warning("Filtrelerden geçen hatalı işletme bulunamadı. Lütfen farklı bir sektör deneyin.")
+                with col1:
+                    st.subheader(f"{row['platform_name']}")
+                    st.caption(f"🌐 {row['website']} | 💳 {row['payment_method']} | 📅 Başvuru: {row['application_date']}")
+                    if row['notes']:
+                        st.info(f"Not: {row['notes']}")
+                
+                with col2:
+                    # Durum güncelleme
+                    status_options = ["Beklemede", "Kabul Edildi", "Reddedildi", "İş Alındı"]
+                    current_status = row['status']
+                    try:
+                        status_idx = status_options.index(current_status)
+                    except ValueError:
+                        status_idx = 0
+                    
+                    new_status = st.selectbox(
+                        "Durum", 
+                        status_options, 
+                        index=status_idx, 
+                        key=f"status_{row['id']}"
+                    )
+                    if new_status != current_status:
+                        update_status(row['id'], new_status)
+                        st.rerun()
 
-    if not st.session_state.lead_results.empty:
-        st.write("### 📋 Bulunan Müşteri Adayları (Yanlış bulursan 🗑️ ile sil)")
-        
-        for idx in st.session_state.lead_results.index:
-            row = st.session_state.lead_results.loc[idx]
-            durum_ikon = "🔥" if row['Durum'] == "🔥 Sıcak" else "🟡"
-            
-            col_info, col_sil = st.columns([5, 1])
-            
-            with col_info:
-                with st.expander(f"{durum_ikon} {row['Şirket']} - {row['Domain']} ({row['Hata']} Hata)"):
-                    st.write(f"**Sektör/Kelime:** {row['Sektör']}")
-                    st.write(f"**E-posta:** {row['E-posta']}")
-                    st.write(f"**Tahmini Ücret:** {row['Tahmini Ücret (TL)']} TL")
-                    st.write(f"**Hata Detayı:** {row['Hata Detayı (TR)']}")
-            
-            with col_sil:
-                st.write("") 
-                st.write("")
-                if st.button("🗑️", key=f"sil_{idx}", help="Bu siteyi listeden sil"):
-                    st.session_state.lead_results = st.session_state.lead_results.drop(idx)
-                    persist("lead_results")
-                    st.rerun() # ================= 5. SEKME =================
-with tab5:
-    st.header("📧 E-posta Gönderimi ve Giden Kutusu Logları")
-    st.info(f"Sistem **{GMAIL_ADRESI}** adresine bağlı.")
+                with col3:
+                    if st.button("🗑️ Sil", key=f"del_{row['id']}"):
+                        delete_platform(row['id'])
+                        st.rerun()
+    else:
+        st.info("Henüz platform eklenmemiş. Yukarıdaki formu kullanarak ilk platformunuzu ekleyin.")
 
-    col_gonder, col_oku = st.columns(2)
+# --- TAB 2: KAZANÇLAR ---
+with tab2:
+    st.header("Kazanç Takibi")
+    
+    df_platforms = get_platforms()
+    if not df_platforms.empty:
+        with st.expander("➕ Yeni Kazanç Ekle"):
+            with st.form("add_earning_form"):
+                platform_options = df_platforms[['id', 'platform_name']].apply(lambda x: f"{x['id']} - {x['platform_name']}", axis=1).tolist()
+                selected_platform = st.selectbox("Hangi Platformdan Kazanç Sağlandı?", platform_options)
+                
+                col1, col2 = st.columns(2)
+                amount = col1.number_input("Miktar", min_value=0.0, step=0.01, format="%.2f")
+                currency = col2.selectbox("Para Birimi", ["USD", "EUR", "TL", "GBP"])
+                
+                notes = st.text_input("Açıklama (örn: Haftalık test görevi)")
+                
+                submitted = st.form_submit_button("Kazancı Kaydet")
+                if submitted:
+                    if amount > 0:
+                        platform_id = int(selected_platform.split(" - ")[0])
+                        add_earning(platform_id, amount, currency, notes)
+                        st.success("✅ Kazanç başarıyla eklendi!")
+                        st.rerun()
+                    else:
+                        st.error("Miktar 0'dan büyük olmalıdır.")
+    else:
+        st.warning("Kazanç ekleyebilmek için önce Platformlar sekmesinden en az bir platform eklemelisiniz.")
 
-    with col_gonder:
-        st.subheader("1. E-posta Gönder")
-        if not st.session_state.lead_results.empty:
-            if st.button("🚀 Listeye Toplu E-posta Gönder"):
-                gonderilmis_domainler = set(st.session_state.gonderilenler_log["Domain"].tolist())
-                gonderilecekler = st.session_state.lead_results[~st.session_state.lead_results["Domain"].isin(gonderilmis_domainler)]
+    # Kazanç geçmişi
+    df_earnings = get_earnings()
+    if not df_earnings.empty:
+        st.subheader("Kazanç Geçmişi")
+        st.dataframe(
+            df_earnings,
+            column_config={
+                "platform_name": "Platform",
+                "amount": st.column_config.NumberColumn("Miktar", format="%.2f"),
+                "currency": "Para Birimi",
+                "date": "Tarih",
+                "notes": "Açıklama"
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Henüz kazanç kaydı bulunmamaktadır.")
 
-                if gonderilecekler.empty:
-                    st.warning("Bu listedeki tüm sitelere zaten e-posta gönderilmiş. Mükerrer gönderim engellendi.")
-                else:
-                    basarili = 0
-                    hatali = 0
-                    progress = st.progress(0)
-                    PANEL_LINKI = "https://yimf3leyv.streamlit.app"
+# --- TAB 3: GENEL ÖZET ---
+with tab3:
+    st.header("Genel Durum Özeti")
+    
+    df_platforms = get_platforms()
+    df_earnings = get_earnings()
+    
+    total_platforms = len(df_platforms)
+    approved_platforms = len(df_platforms[df_platforms['status'] == 'Kabul Edildi']) if not df_platforms.empty else 0
+    total_earnings = df_earnings['amount'].sum() if not df_earnings.empty else 0.0
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Toplam Başvurulan Platform", total_platforms)
+    col2.metric("Kabul Edilen Platform Sayısı", approved_platforms)
+    col3.metric("Toplam Kazanç (Tüm Para Birimleri)", f"{total_earnings:.2f}")
+    
+    if not df_platforms.empty:
+        st.subheader("Başvuru Durumları")
+        status_counts = df_platforms['status'].value_counts()
+        st.bar_chart(status_counts, color="#00C853")
 
-                    for i, row in gonderilecekler.iterrows():
-                        alici = row['E-posta']
-                        site = row['Domain']
-                        sirket_adi = row['Şirket']
-                        hata_sayisi = row['Hata']
-                        tahmini_ucret = row['Tahmini Ücret (TL)']
-                        hata_detayi = row.get('Hata Detayı (TR)', 'çeşitli sorunlar')
-
-                        msg = MIMEMultipart()
-                        msg['From'] = GMAIL_ADRESI
-                        msg['To'] = alici
-                        msg['Subject'] = f"Dikkat: {site} sitenizde {hata_sayisi} kritik hata bulundu"
-
-                        body = f"""Merhaba {sirket_adi} Yetkilisi,
-
-Ben Cuma Babacan. Kendim de bir engelli bireyim ve engelli bireylerin web sitelerine sorunsuz erişebilmesi için bir erişilebilirlik denetim sistemi geliştirdim.
-
-Bugün sizin sitenizi sistemimle test ettim ve **{site}** adresinde engelli bireylerin (ve Google botlarının) karşılaştığı **{hata_sayisi}** adet kritik engel tespit ettim.
-
-Tespit ettiğim en önemli sorunlar şunlar:
-👉 **{hata_detayi}**
-
-**Bunu neden size yazıyorum?**
-Sadece satış yapmak için değil; 2025 yılında yürürlüğe girecek Erişilebilirlik Genelgesi kapsamında, web sitesi engelli erişimine uygun olmayan işletmelere idari para cezaları uygulanacak. Ayrıca Google, erişilebilirliği tam olan siteleri arama sonuçlarında daha üst sıralarda gösteriyor.
-
-Bu hataların giderilmesi için size özel bir bakım paketimiz mevcut. Çözüm ve aylık takip bedeli **{tahmini_ucret} TL** olarak belirlenmiştir. 
-
-Ancak hemen bir ödeme yapmanıza gerek yok. İsterseniz sitenizin tamamının taranıp, hangi sayfada hangi hatanın olduğunu gösteren **ücretsiz detaylı denetim raporunu** size gönderebilirim.
-
-Bu ücretsiz raporu talep etmek için sadece bu e-postaya **"Raporu Gönder"** yazmanız yeterli.
-
-Benim kim olduğumu, hikayemi ve bu işi neden yaptığımı merak ediyorsanız, geliştirdiğim sistemi ve vitrinimi buradan inceleyebilirsiniz:
-🌐 {PANEL_LINKI}
-
-Sağlıklı ve kazançlı günler dilerim.
-
-Saygılarımla,
-Cuma Babacan
-Erişilebilirlik Danışmanı"""
-
-                        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-
-                        try:
-                            server = smtplib.SMTP('smtp.gmail.com', 587)
-                            server.starttls()
-                            server.login(GMAIL_ADRESI, GMAIL_SIFRESI)
-                            server.send_message(msg)
-                            server.quit()
-                            basarili += 1
-
-                            yeni_log = pd.DataFrame({
-                                "Tarih": [datetime.now().strftime("%Y-%m-%d %H:%M")], "Domain": [site],
-                                "E-posta": [alici], "Hata Sayısı": [hata_sayisi],
-                                "Talep Edilen Ücret": [tahmini_ucret], "Durum": ["Gönderildi (Yanıt Bekleniyor)"]
-                            })
-                            st.session_state.gonderilenler_log = pd.concat([st.session_state.gonderilenler_log, yeni_log], ignore_index=True)
-                        except Exception: hatali += 1
-
-                        progress.progress((i + 1) / len(gonderilecekler))
-                        time.sleep(2)
-
-                    persist("gonderilenler_log")
-                    st.success(f"İşlem tamam! {basarili} yeni e-posta gönderildi. {hatali} hata.")
-        else:
-            st.info("Gönderilecek liste boş. Önce 'Otomatik Müşteri Bulucu' sekmesinden arama yapın.")
-
-    with col_oku:
-        st.subheader("2. Gelen Yanıtları Kontrol Et")
-        if st.button("📥 Gelen Kutusunu Tara ve Sınıflandır"):
-            with st.spinner("Gmail'e bağlanılıyor..."):
-                try:
-                    mail = imaplib.IMAP4_SSL("imap.gmail.com")
-                    mail.login(GMAIL_ADRESI, GMAIL_SIFRESI)
-                    mail.select("inbox")
-                    status, messages = mail.search(None, "ALL")
-                    mail_ids = messages[0].split()[-20:]
-
-                    yanitlar = []
-                    olumlu_kelimeler = ["evet", "raporu gönder", "ilgileniyorum", "rapor", "detay", "fiyat", "görüşelim", "bilgi alabilir"]
-                    olumsuz_kelimeler = ["istemiyorum", "ilgilenmiyorum", "çıkarın", "teşekkürler", "uygun değil", "spam"]
-
-                    for i in reversed(mail_ids):
-                        typ, data = mail.fetch(i, '(RFC822)')
-                        for response_part in data:
-                            if isinstance(response_part, tuple):
-                                msg = email.message_from_bytes(response_part[1])
-                                konu = msg['Subject'] or ""
-                                gonderen = msg['From'] or ""
-
-                                if "Re:" in konu or "Ynt:" in konu or "Dikkat:" in konu:
-                                    body = ""
-                                    if msg.is_multipart():
-                                        for part in msg.walk():
-                                            if part.get_content_type() == "text/plain":
-                                                body = part.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
-                                                break
-                                    else:
-                                        body = msg.get_payload(decode=True).decode('utf-8', errors='ignore').lower()
-
-                                    durum = "Belirsiz"
-                                    if any(k in body for k in olumlu_kelimeler): durum = "🔥 Olumlu (Satışa Hazır)"
-                                    elif any(k in body for k in olumsuz_kelimeler): durum = "❌ Olumsuz"
-
-                                    yanitlar.append({"Gönderen": gonderen, "Konu": konu, "Durum": durum})
-                    mail.logout()
-
-                    if yanitlar:
-                        st.session_state.gelen_yanitlar = pd.DataFrame(yanitlar)
-                        persist("gelen_yanitlar")
-                        st.success(f"{len(yanitlar)} adet yanıt bulundu ve sınıflandırıldı!")
-                    else: st.info("Henüz bir yanıt bulunamadı.")
-                except Exception as e: st.error(f"Bağlantı Hatası: {e}.")
-
-        if not st.session_state.gelen_yanitlar.empty:
-            st.write("### 📊 Gelen Yanıtlar")
-            st.dataframe(st.session_state.gelen_yanitlar, use_container_width=True)
-
-    st.divider()
-    st.subheader("📤 Giden E-posta Logları")
-    if not st.session_state.gonderilenler_log.empty:
-        st.dataframe(st.session_state.gonderilenler_log.sort_values(by="Tarih", ascending=False), use_container_width=True)
-    else: st.info("Henüz hiç e-posta gönderilmedi.")
-
-# ================= 6. SEKME: VİTRİN & HAKKIMDA =================
-with tab6:
-    st.markdown("""
-    <style>
-    .hero { background: linear-gradient(135deg, #1f4037 0%, #99f2c8 100%); padding: 40px; border-radius: 15px; color: white; text-align: center; margin-bottom: 30px; }
-    .hero h1 { font-size: 40px; margin-bottom: 10px; }
-    .hero p { font-size: 18px; font-weight: 300; }
-    .card { background-color: #f9f9f9; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; color: #333; }
-    .card h3 { margin-top: 0; color: #1f4037; }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <div class="hero">
-        <h1>♿ Engelsiz Web, Erişilebilir Gelecek</h1>
-        <p>Engelli bir birey olarak, kimsenin geride kalmadığı bir dijital dünya için çalışıyorum.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col_v1, col_v2 = st.columns(2)
-
-    with col_v1:
-        st.markdown("""
-        <div class="card">
-            <h3>👋 Ben Kimim?</h3>
-            <p>Merhaba, ben <b>Cuma Babacan</b>. Kendim de bir engelli bireyim ve internetin herkes için eşit derecede erişilebilir olması gerektiğine inanıyorum.</p>
-            <p>İşletmelerin web sitelerini engelli bireylerin (görme, işitme, ortopedik engelliler) rahatça kullanabilmesi için denetliyorum. Sadece bir hizmet sunmuyorum; aynı zamanda bir sosyal sorumluluk projesini yürütüyorum.</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-            <h3>🛠️ Ne Yapıyorum?</h3>
-            <ul>
-                <li><b>Erişilebilirlik Denetimi:</b> Sitenizdeki engelleri tespit ediyorum.</li>
-                <li><b>Yasal Uyum Danışmanlığı:</b> 2025 Erişilebilirlik Genelgesi'ne uyum sağlamanıza yardımcı oluyorum.</li>
-                <li><b>SEO ve Trafik Artışı:</b> Erişilebilir siteler Google tarafından daha üst sıralarda gösterilir, bu da size daha fazla müşteri getirir.</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_v2:
-        st.markdown("""
-        <div class="card">
-            <h3>📊 Neden Bana Güvenmelisiniz?</h3>
-            <p>Çünkü bu işi <b>yaşayarak</b> yapıyorum.</p>
-            <p>Kendi geliştirdiğim bu panel sayesinde saniyeler içinde sitenizin taramasını yapıp, size özel bir rapor çıkarıyorum.</p>
-            <p>Müşterilerime sadece "hata listesi" değil, o hataların <b>Türkçe çözüm yollarını</b> ve nasıl düzeltileceğini de sunuyorum. <br><br><i>(İşte bu sistem, kendi sitemi %100 uyumlu hale getirmemi sağladı.)</i></p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="card">
-            <h3>📞 İletişime Geçin</h3>
-            <p>Web sitenizin engelli bireyler için uygun olup olmadığını ücretsiz öğrenmek ister misiniz?</p>
-            <p><b>E-posta:</b> babacan.8691@gmail.com</p>
-            <p><b>Hizmet Bölgesi:</b> Türkiye Geneli (Uzaktan Danışmanlık)</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.divider()
-    st.success("💡 **Unutmayın:** Erişilebilirlik sadece engelli bireyler için değil, geçici sakatlık yaşayanlar, yaşlılar ve mobil cihaz kullanan herkes için gereklidir. Bu, işletmeniz için bir yasal zorunluluk ve aynı zamanda bir fırsattır.")
+st.sidebar.markdown("---")
+st.sidebar.info("💡 **İpucu:** Her yeni platform başvurusu yaptığınızda buraya ekleyin. Durumunu 'Beklemede' olarak işaretleyin ve yanıt geldikçe güncelleyin. Kazanç elde ettikçe 'Kazançlar' sekmesine kaydedin.")
