@@ -35,16 +35,13 @@ GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 DB_FILE = "tracker.db"
 
-# --- VERİTABANI KURULUMU (Sıfırlama ve Yeniden Oluşturma) ---
+# --- VERİTABANI KURULUMU ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    
-    # Eski tabloları sil (Şema güncellemesi için)
     c.execute("DROP TABLE IF EXISTS earnings")
     c.execute("DROP TABLE IF EXISTS platforms")
     
-    # Yeni tabloları oluştur
     c.execute('''CREATE TABLE IF NOT EXISTS platforms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     platform_name TEXT NOT NULL,
@@ -69,7 +66,6 @@ def init_db():
 
 init_db()
 
-# --- OTOMATİK PLATFORM YÜKLEME ---
 def seed_platforms():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -141,7 +137,6 @@ def get_earnings():
     conn.close()
     return df
 
-# --- E-POSTA FONKSİYONLARI ---
 def send_email(to_email, subject, body):
     try:
         msg = MIMEMultipart()
@@ -264,13 +259,20 @@ with tab3:
         st.subheader("📤 Başvuru E-postası Gönder")
         df_platforms = get_platforms()
         if not df_platforms.empty:
-            opts = df_platforms.apply(lambda x: f"{x['platform_name']} ({x['contact_email']})" if x['contact_email'] else x['platform_name'], axis=1).tolist()
-            sel = st.selectbox("Platform Seç", opts)
-            sel_name = sel.split(" (")[0]
-            target = df_platforms[df_platforms['platform_name'] == sel_name]
-            to_email = st.text_input("Alıcı E-posta", value=target['contact_email'].values[0] if not target.empty and pd.notna(target['contact_email'].values[0]) else "")
+            # ID ve Platform ismini birleştirerek bir sözlük oluşturuyoruz
+            platform_dict = {row['id']: f"{row['platform_name']} ({row['contact_email']})" if row['contact_email'] else row['platform_name'] for _, row in df_platforms.iterrows()}
+            
+            # Seçim kutusunu ID ile çalıştırıp, ekranda ismini gösteriyoruz
+            selected_id = st.selectbox("Platform Seç", options=list(platform_dict.keys()), format_func=lambda x: platform_dict[x])
+            
+            # Seçilen ID'ye göre e-posta adresini veritabanından çekiyoruz
+            target_row = df_platforms[df_platforms['id'] == selected_id]
+            target_email = target_row['contact_email'].values[0] if not target_row.empty and pd.notna(target_row['contact_email'].values[0]) else ""
+            
+            to_email = st.text_input("Alıcı E-posta", value=target_email)
             subject = st.text_input("Konu", value="Application for Tester Panel - Cuma Babacan")
             body = st.text_area("Mesaj", value="Hello Team,\n\nMy name is Cuma Babacan. I am a person with disabilities based in Turkey and a daily screen reader user...", height=250)
+            
             if st.button("🚀 Gönder"):
                 if to_email:
                     success, msg = send_email(to_email, subject, body)
