@@ -18,16 +18,20 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔐 Sisteme Giriş")
+    st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
+    
     with st.form("login_form"):
         kullanici_adi = st.text_input("Kullanıcı Adı")
         sifre = st.text_input("Şifre", type="password")
         submit = st.form_submit_button("Giriş Yap")
+        
         if submit:
-            if kullanici_adi == "Cuma Babacan" and sifre == "784512":
+            # .strip() boşlukları temizler, .lower() büyük/küçük harf duyarlılığını kaldırır
+            if kullanici_adi.strip().lower() == "cuma babacan" and sifre.strip() == "784512":
                 st.session_state.logged_in = True
                 st.rerun()
             else:
-                st.error("Hatalı kullanıcı adı veya şifre!")
+                st.error("Hatalı giriş! Lütfen kullanıcı adınızı ve şifrenizi kontrol edin.")
     st.stop() # Giriş yapılmadıysa kodun devamını çalıştırma
 
 # --- E-POSTA AYARLARI ---
@@ -40,6 +44,7 @@ DB_FILE = "tracker.db"
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    # Platformlar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS platforms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     platform_name TEXT NOT NULL,
@@ -50,6 +55,7 @@ def init_db():
                     status TEXT DEFAULT 'Beklemede',
                     notes TEXT
                 )''')
+    # Kazançlar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS earnings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     platform_id INTEGER,
@@ -129,9 +135,9 @@ def send_email(to_email, subject, body):
         server.login(GMAIL_ADRESI, GMAIL_SIFRESI)
         server.send_message(msg)
         server.quit()
-        return True, "E-posta başarıyla gönderildi."
+        return True, "✅ E-posta başarıyla gönderildi."
     except Exception as e:
-        return False, f"Hata oluştu: {str(e)}"
+        return False, f"❌ Gönderim hatası: {str(e)}"
 
 def fetch_emails(limit=5):
     try:
@@ -148,8 +154,8 @@ def fetch_emails(limit=5):
             for response_part in data:
                 if isinstance(response_part, tuple):
                     msg = email.message_from_bytes(response_part[1])
-                    subject = msg['Subject']
-                    from_ = msg['From']
+                    subject = msg['Subject'] or "Konu Yok"
+                    from_ = msg['From'] or "Bilinmeyen Gönderen"
                     
                     body = ""
                     if msg.is_multipart():
@@ -160,7 +166,7 @@ def fetch_emails(limit=5):
                     else:
                         body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
                     
-                    emails.append({"from": from_, "subject": subject, "body": body[:200] + "..."})
+                    emails.append({"from": from_, "subject": subject, "body": body[:500] + "..."})
         mail.logout()
         return emails
     except Exception as e:
@@ -168,18 +174,18 @@ def fetch_emails(limit=5):
         return []
 
 # --- ARAYÜZ ---
-st.title("🎯 Küresel Test Platformları - Başvuru & Kazanç Takip Sistemi")
+st.title("🎯 Küresel Test Platformları - Yönetim Paneli")
 st.sidebar.success(f"Giriş Yapıldı: Cuma Babacan")
 
 tab1, tab2, tab3, tab4 = st.tabs(["📋 Platformlar", "💰 Kazançlar", "📧 E-posta Yönetimi", "📊 Genel Özet"])
 
 # --- TAB 1: PLATFORMLAR ---
 with tab1:
-    st.header("Platform Listesi")
+    st.header("Başvurulan Platformlar")
     with st.expander("➕ Yeni Platform Ekle"):
-        with st.form("add_platform_form"):
+        with st.form("add_platform_form", clear_on_submit=True):
             col1, col2, col3 = st.columns(3)
-            name = col1.text_input("Platform Adı")
+            name = col1.text_input("Platform Adı (örn: Testlio)")
             website = col2.text_input("Web Sitesi")
             contact_email = col3.text_input("İletişim E-postası")
             
@@ -190,21 +196,28 @@ with tab1:
             submitted = st.form_submit_button("Platformu Kaydet")
             if submitted and name:
                 add_platform(name, website, contact_email, payment, notes)
-                st.success(f"✅ {name} eklendi!")
+                st.success(f"✅ {name} başarıyla eklendi!")
                 st.rerun()
 
     df_platforms = get_platforms()
     if not df_platforms.empty:
         for index, row in df_platforms.iterrows():
             with st.container(border=True):
-                col1, col2, col3 = st.columns([3, 1, 1])
+                col1, col2, col3 = st.columns([4, 1, 1])
                 with col1:
                     st.subheader(row['platform_name'])
-                    st.caption(f"📧 {row['contact_email']} | 🌐 {row['website']} | 💳 {row['payment_method']}")
+                    st.caption(f"📧 {row['contact_email']} | 🌐 {row['website']} | 💳 {row['payment_method']} | 📅 {row['application_date']}")
+                    if row['notes']:
+                        st.info(f"Not: {row['notes']}")
                 with col2:
                     status_options = ["Beklemede", "Kabul Edildi", "Reddedildi", "İş Alındı"]
-                    new_status = st.selectbox("Durum", status_options, index=status_options.index(row['status']), key=f"st_{row['id']}")
-                    if new_status != row['status']:
+                    current_status = row['status']
+                    try:
+                        idx = status_options.index(current_status)
+                    except ValueError:
+                        idx = 0
+                    new_status = st.selectbox("Durum", status_options, index=idx, key=f"st_{row['id']}")
+                    if new_status != current_status:
                         update_status(row['id'], new_status)
                         st.rerun()
                 with col3:
@@ -220,19 +233,19 @@ with tab2:
     df_platforms = get_platforms()
     if not df_platforms.empty:
         with st.expander("➕ Yeni Kazanç Ekle"):
-            with st.form("add_earning_form"):
+            with st.form("add_earning_form", clear_on_submit=True):
                 platform_options = df_platforms.apply(lambda x: f"{x['id']} - {x['platform_name']}", axis=1).tolist()
                 selected_platform = st.selectbox("Platform", platform_options)
                 
                 col1, col2 = st.columns(2)
                 amount = col1.number_input("Miktar", min_value=0.0, step=0.01)
                 currency = col2.selectbox("Para Birimi", ["USD", "EUR", "TL", "GBP"])
-                notes = st.text_input("Açıklama")
+                notes = st.text_input("Açıklama (örn: Haftalık test ödemesi)")
                 
                 if st.form_submit_button("Kazancı Kaydet") and amount > 0:
                     platform_id = int(selected_platform.split(" - ")[0])
                     add_earning(platform_id, amount, currency, notes)
-                    st.success("✅ Kazanç eklendi!")
+                    st.success("✅ Kazanç kaydedildi!")
                     st.rerun()
 
     df_earnings = get_earnings()
@@ -247,22 +260,20 @@ with tab3:
     
     col_send, col_inbox = st.columns(2)
     
-    # E-Posta Gönderme Kısmı
     with col_send:
-        st.subheader("📤 E-posta Gönder")
+        st.subheader("📤 Hızlı E-posta Gönder")
         df_platforms = get_platforms()
         
         if not df_platforms.empty:
             platform_options = df_platforms.apply(lambda x: f"{x['platform_name']} ({x['contact_email']})" if x['contact_email'] else x['platform_name'], axis=1).tolist()
-            selected_platform_str = st.selectbox("Hangi Platforma Gönderilecek?", platform_options)
+            selected_platform_str = st.selectbox("Platform Seç", platform_options)
             
-            # Seçilen platformun e-postasını bul
             selected_name = selected_platform_str.split(" (")[0]
             target_email_row = df_platforms[df_platforms['platform_name'] == selected_name]
             target_email = target_email_row['contact_email'].values[0] if not target_email_row.empty and pd.notna(target_email_row['contact_email'].values[0]) else ""
             
             to_email = st.text_input("Alıcı E-posta", value=target_email)
-            subject = st.text_input("Konu", value="Tester Application - Cuma Babacan")
+            subject = st.text_input("Konu", value="Application for Tester Panel - Cuma Babacan")
             
             default_body = """Hello Team,
 
@@ -273,7 +284,8 @@ I can receive payments via PayPal or Payoneer and I am fully equipped to partici
 Could you please let me know how I can register as a tester?
 
 Best regards,
-Cuma Babacan"""
+Cuma Babacan
+babacan.8691@gmail.com"""
             
             body = st.text_area("Mesaj", value=default_body, height=250)
             
@@ -289,17 +301,15 @@ Cuma Babacan"""
         else:
             st.warning("Önce 'Platformlar' sekmesinden bir platform ekleyin.")
 
-    # Gelen Kutusu Okuma Kısmı
     with col_inbox:
         st.subheader("📥 Gelen Kutusu (Son 5 E-posta)")
-        if st.button("🔄 Gelen Kutusunu Yenile"):
-            with st.spinner("E-postalar çekiliyor..."):
+        if st.button("🔄 E-postaları Yenile"):
+            with st.spinner("Gmail'e bağlanılıyor..."):
                 emails = fetch_emails(5)
                 if emails:
                     for idx, em in enumerate(emails):
-                        with st.expander(f"📩 {em['subject'][:40]}... - {em['from'][:20]}"):
+                        with st.expander(f"📩 {em['subject'][:35]}..."):
                             st.write(f"**Kimden:** {em['from']}")
-                            st.write(f"**Konu:** {em['subject']}")
                             st.text(em['body'])
                 else:
                     st.info("Gelen kutusu boş veya e-postalar okunamadı.")
@@ -315,11 +325,10 @@ with tab4:
     total_earnings = df_earnings['amount'].sum() if not df_earnings.empty else 0.0
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Toplam Başvurulan Platform", total_platforms)
-    col2.metric("Kabul Edilen Platform Sayısı", approved_platforms)
+    col1.metric("Başvurulan Platform", total_platforms)
+    col2.metric("Kabul Edilen", approved_platforms)
     col3.metric("Toplam Kazanç", f"{total_earnings:.2f}")
     
     if not df_platforms.empty:
         st.subheader("Başvuru Durumları")
         st.bar_chart(df_platforms['status'].value_counts(), color="#00C853")
-            
