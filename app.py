@@ -35,9 +35,16 @@ GMAIL_ADRESI = "babacan.8691@gmail.com"
 GMAIL_SIFRESI = "kuog wnba kcqu qgub"
 DB_FILE = "tracker.db"
 
+# --- VERİTABANI KURULUMU (Sıfırlama ve Yeniden Oluşturma) ---
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    
+    # Eski tabloları sil (Şema güncellemesi için)
+    c.execute("DROP TABLE IF EXISTS earnings")
+    c.execute("DROP TABLE IF EXISTS platforms")
+    
+    # Yeni tabloları oluştur
     c.execute('''CREATE TABLE IF NOT EXISTS platforms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     platform_name TEXT NOT NULL,
@@ -62,6 +69,7 @@ def init_db():
 
 init_db()
 
+# --- OTOMATİK PLATFORM YÜKLEME ---
 def seed_platforms():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -87,6 +95,7 @@ def seed_platforms():
 
 seed_platforms()
 
+# --- VERİTABANI FONKSİYONLARI ---
 def get_platforms():
     conn = sqlite3.connect(DB_FILE)
     df = pd.read_sql("SELECT * FROM platforms", conn)
@@ -132,6 +141,7 @@ def get_earnings():
     conn.close()
     return df
 
+# --- E-POSTA FONKSİYONLARI ---
 def send_email(to_email, subject, body):
     try:
         msg = MIMEMultipart()
@@ -148,11 +158,41 @@ def send_email(to_email, subject, body):
     except Exception as e:
         return False, f"❌ Gönderim hatası: {str(e)}"
 
+def fetch_emails(limit=5):
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(GMAIL_ADRESI, GMAIL_SIFRESI)
+        mail.select("inbox")
+        status, messages = mail.search(None, "ALL")
+        mail_ids = messages[0].split()[-limit:]
+        emails = []
+        for i in reversed(mail_ids):
+            typ, data = mail.fetch(i, '(RFC822)')
+            for response_part in data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+                    subject = msg['Subject'] or "Konu Yok"
+                    from_ = msg['From'] or "Bilinmeyen Gönderen"
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain":
+                                body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                break
+                    else:
+                        body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    emails.append({"from": from_, "subject": subject, "body": body[:500] + "..."})
+        mail.logout()
+        return emails
+    except Exception as e:
+        st.error(f"E-postalar okunurken hata oluştu: {e}")
+        return []
+
 # --- ARAYÜZ ---
 st.title("🎯 Küresel Test Platformları - Yönetim Paneli")
 st.sidebar.success("Giriş Yapıldı: Cuma Babacan")
 
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Platformlar", "💰 Kazançlar", "📧 Başvuru & E-posta", "📊 Genel Özet"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Platformlar", "💰 Kazançlar", "📧 E-posta Yönetimi", "📊 Genel Özet"])
 
 with tab1:
     st.header("Platform Listesi & Başvuru Durumları")
@@ -178,6 +218,8 @@ with tab1:
                 with c1:
                     st.subheader(row['platform_name'])
                     st.caption(f"📧 {row['contact_email']} | 🌐 {row['website']} | 💳 {row['payment_method']}")
+                    if row['notes']:
+                        st.info(f"Not: {row['notes']}")
                 with c2:
                     opts = ["Beklemede", "Kabul Edildi", "Reddedildi", "İş Alındı"]
                     idx = opts.index(row['status']) if row['status'] in opts else 0
@@ -215,22 +257,44 @@ with tab2:
         st.info("Kayıt yok.")
 
 with tab3:
-    st.header("📧 E-posta Gönderimi")
-    df_platforms = get_platforms()
-    if not df_platforms.empty:
-        opts = df_platforms.apply(lambda x: f"{x['platform_name']} ({x['contact_email']})" if x['contact_email'] else x['platform_name'], axis=1).tolist()
-        sel = st.selectbox("Platform Seç", opts)
-        sel_name = sel.split(" (")[0]
-        target = df_platforms[df_platforms['platform_name'] == sel_name]
-        to_email = st.text_input("Alıcı E-posta", value=target['contact_email'].values[0] if not target.empty and pd.notna(target['contact_email'].values[0]) else "")
-        subject = st.text_input("Konu", value="Application for Tester Panel - Cuma Babacan")
-        body = st.text_area("Mesaj", value="Hello Team,\n\nMy name is Cuma Babacan. I am a person with disabilities based in Turkey and a daily screen reader user...", height=250)
-        if st.button("🚀 Gönder"):
-            if to_email:
-                success, msg = send_email(to_email, subject, body)
-                st.success(msg) if success else st.error(msg)
-    else:
-        st.warning("Önce platform ekleyin.")
+    st.header("📧 E-posta Gönderimi ve Gelen Kutusu")
+    col_send, col_inbox = st.columns(2)
+    
+    with col_send:
+        st.subheader("📤 Başvuru E-postası Gönder")
+        df_platforms = get_platforms()
+        if not df_platforms.empty:
+            opts = df_platforms.apply(lambda x: f"{x['platform_name']} ({x['contact_email']})" if x['contact_email'] else x['platform_name'], axis=1).tolist()
+            sel = st.selectbox("Platform Seç", opts)
+            sel_name = sel.split(" (")[0]
+            target = df_platforms[df_platforms['platform_name'] == sel_name]
+            to_email = st.text_input("Alıcı E-posta", value=target['contact_email'].values[0] if not target.empty and pd.notna(target['contact_email'].values[0]) else "")
+            subject = st.text_input("Konu", value="Application for Tester Panel - Cuma Babacan")
+            body = st.text_area("Mesaj", value="Hello Team,\n\nMy name is Cuma Babacan. I am a person with disabilities based in Turkey and a daily screen reader user...", height=250)
+            if st.button("🚀 Gönder"):
+                if to_email:
+                    success, msg = send_email(to_email, subject, body)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                else:
+                    st.warning("Lütfen geçerli bir alıcı e-posta adresi girin.")
+        else:
+            st.warning("Önce platform ekleyin.")
+            
+    with col_inbox:
+        st.subheader("📥 Gelen Kutusu (Son 5 E-posta)")
+        if st.button("🔄 E-postaları Yenile"):
+            with st.spinner("Gmail'e bağlanılıyor..."):
+                emails = fetch_emails(5)
+                if emails:
+                    for idx, em in enumerate(emails):
+                        with st.expander(f"📩 {em['subject'][:35]}..."):
+                            st.write(f"**Kimden:** {em['from']}")
+                            st.text(em['body'])
+                else:
+                    st.info("Gelen kutusu boş veya e-postalar okunamadı.")
 
 with tab4:
     st.header("Genel Özet")
@@ -241,4 +305,4 @@ with tab4:
     c2.metric("Kabul Edilen", len(df_p[df_p['status'] == 'Kabul Edildi']) if not df_p.empty else 0)
     c3.metric("Toplam Kazanç", f"{df_e['amount'].sum():.2f}" if not df_e.empty else "0.00")
     if not df_p.empty:
-        st.bar_chart(df_p['status'].value_counts())
+        st.bar_chart(df_p['status'].value_counts(), color="#00C853")
