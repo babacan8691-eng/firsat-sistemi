@@ -49,6 +49,14 @@ def hatayi_cevir(hata_ingilizce):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    
+    # GELİŞTİRME AŞAMASI İÇİN: Şema hatalarını önlemek adına tabloları sıfırlıyoruz.
+    # Not: İleride verileriniz biriktiğinde bu DROP satırlarını sileceğiz.
+    c.execute("DROP TABLE IF EXISTS leads")
+    c.execute("DROP TABLE IF EXISTS projects")
+    c.execute("DROP TABLE IF EXISTS earnings")
+
+    # Tabloları en güncel sütunlarla yeniden oluştur
     c.execute('''CREATE TABLE IF NOT EXISTS leads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     firma_adi TEXT, sektor TEXT, eposta TEXT, website TEXT,
@@ -124,7 +132,7 @@ with tab2:
             sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "E-Ticaret", "Restoran", "Ajans", "Diğer"])
             c3, c4 = st.columns(2)
             eposta = c3.text_input("E-posta")
-            website = c4.text_input("Website (örn: ornek.com)") # Website alanı eklendi
+            website = c4.text_input("Website (örn: ornek.com)")
             notlar = st.text_input("Notlar")
             if st.form_submit_button("Kaydet") and firma:
                 execute_query("INSERT INTO leads (firma_adi, sektor, eposta, website, notlar, tarih) VALUES (?, ?, ?, ?, ?, ?)", 
@@ -194,7 +202,6 @@ with tab4:
     st.header("Gerçek Zamanlı Erişilebilirlik Taraması")
     st.write("Google PageSpeed API kullanarak sitenin **gerçek** erişilebilirlik hatalarını bulur.")
     
-    # Tarama kaynağını seçme
     kaynak = st.radio("Neyi taramak istiyorsun?", ["Kayıtlı Projelerden Seç", "Müşteri Adaylarından Seç", "Manuel URL Gir"], horizontal=True)
     
     taranacak_url = ""
@@ -211,7 +218,6 @@ with tab4:
             
     elif kaynak == "Müşteri Adaylarından Seç":
         df_leads = fetch_data("SELECT id, firma_adi, website FROM leads")
-        # Sadece website girilmiş olanları filtrele
         df_leads_valid = df_leads[df_leads['website'].notna() & (df_leads['website'] != "")]
         if not df_leads_valid.empty:
             lead_secenekleri = df_leads_valid.apply(lambda x: f"{x['id']} - {x['firma_adi']} ({x['website']})", axis=1).tolist()
@@ -219,16 +225,15 @@ with tab4:
             secilen_id = int(secim.split(" - ")[0])
             taranacak_url = df_leads_valid[df_leads_valid['id'] == secilen_id]['website'].values[0]
         else:
-            st.warning("Web sitesi girilmiş müşteri adayı bulunamadı. (Lütfen CRM sekmesinden ekleyin).")
+            st.warning("Web sitesi girilmiş müşteri adayı bulunamadı.")
 
-    else: # Manuel URL Gir
+    else:
         taranacak_url = st.text_input("Taranacak Site (örn: ornek.com)")
 
     st.divider()
 
     if st.button("Siteyi Tara", type="primary"):
         if taranacak_url:
-            # URL formatını düzelt
             if not taranacak_url.startswith("http"): 
                 taranacak_url = "https://" + taranacak_url
                 
