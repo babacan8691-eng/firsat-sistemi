@@ -49,7 +49,6 @@ def hatayi_cevir(hata_ingilizce):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    
     # Geliştirme aşamasında şema hatalarını önlemek için tabloları sıfırlıyoruz
     c.execute("DROP TABLE IF EXISTS leads")
     c.execute("DROP TABLE IF EXISTS projects")
@@ -88,9 +87,19 @@ def fetch_data(query):
     return df
 
 # --- OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap / Overpass API) ---
+# Alternatif sunucular ve Referer başlığı eklendi
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+]
+
 def osm_ile_isletme_bul(sehir, sektor):
-    """OpenStreetMap üzerinden belirtilen şehir ve sektördeki işletmeleri bulur."""
-    # Sektörleri OSM etiketlerine eşleştirme
+    """
+    OpenStreetMap üzerinden belirtilen şehir (veya 'Tüm Türkiye') ve sektördeki işletmeleri bulur.
+    Şehir 'Tüm Türkiye' ise ülke sınırlarını kapsayan bir alan sorgusu kullanır.
+    """
     etiketler = {
         "Klinik": '["amenity"="clinic"]',
         "Otel": '["tourism"="hotel"]',
@@ -107,10 +116,16 @@ def osm_ile_isletme_bul(sehir, sektor):
     
     sektor_etiketi = etiketler.get(sektor, f'["name"~"{sektor}",i]')
     
+    # Tüm Türkiye için ülke sınırı alanı, diğer şehirler için şehir adı alanı
+    if sehir.strip().lower() == "tüm türkiye":
+        alan_sorgusu = 'area["ISO3166-1"="TR"][admin_level=2]'
+    else:
+        alan_sorgusu = f'area["name"~"{sehir}",i]'
+
     # Overpass QL sorgusu
     query = f"""
-    [out:json][timeout:25];
-    area["name"~"{sehir}"]->.searchArea;
+    [out:json][timeout:60];
+    {alan_sorgusu}->.searchArea;
     (
       node{sektor_etiketi}(area.searchArea);
       way{sektor_etiketi}(area.searchArea);
@@ -118,37 +133,40 @@ def osm_ile_isletme_bul(sehir, sektor):
     out center tags;
     """
     
-    url = "https://overpass-api.de/api/interpreter"
     headers = {
         'User-Agent': 'ErisilebilirlikDanismanligi/1.0 (babacan.8691@gmail.com)',
+        'Referer': 'https://jqv6paut.streamlit.app/', # Referer eklendi
         'Content-Type': 'application/x-www-form-urlencoded'
     }
     
-    try:
-        response = requests.post(url, data={'data': query}, headers=headers, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            isletmeler = []
-            for element in data.get('elements', []):
-                tags = element.get('tags', {})
-                isim = tags.get('name', 'İsimsiz İşletme')
-                website = tags.get('website', tags.get('contact:website', ''))
-                
-                if website: # Sadece web sitesi olanları al
-                    isletmeler.append({
-                        'isim': isim,
-                        'website': website,
-                        'adres': tags.get('addr:street', '')
-                    })
-            return isletmeler
-        else:
-            st.error(f"OSM API Hatası: {response.status_code}")
-            return []
-    except Exception as e:
-        st.error(f"Bağlantı Hatası: {e}")
-        return []
-
-# --- ARAYÜZ ---
+    # Sunucuları sırayla dene
+    for url in OVERPASS_URLS:
+        try:
+            response = requests.post(url, data={'data': query}, headers=headers, timeout=60)
+            if response.status_code == 200:
+                data = response.json()
+                isletmeler = []
+                for element in data.get('elements', []):
+                    tags = element.get('tags', {})
+                    isim = tags.get('name', 'İsimsiz İşletme')
+                    website = tags.get('website', tags.get('contact:website', ''))
+                    
+                    if website: # Sadece web sitesi olanları al
+                        isletmeler.append({
+                            'isim': isim,
+                            'website': website,
+                            'adres': tags.get('addr:street', '')
+                        })
+                return isletmeler
+            elif response.status_code == 429: # Rate limit
+                continue # Sonraki sunucuyu dene
+            else:
+                continue # Diğer hatalarda da sonraki sunucuyu dene
+        except Exception:
+            continue # Bağlantı hatasında sonraki sunucuyu dene
+    
+    st.error("Tüm Overpass sunucuları yanıt vermedi. Lütfen daha sonra tekrar deneyin.")
+    return [] # --- ARAYÜZ ---
 st.title("🎯 Erişilebilirlik Danışmanlığı İşletim Sistemi")
 st.sidebar.success("Giriş Yapıldı: Cuma Babacan")
 
@@ -257,7 +275,7 @@ with tab3:
                         execute_query("DELETE FROM projects WHERE id = ?", (row['id'],))
                         st.rerun()
 
-# --- TAB 4: ERİŞİLEBİLİRLİK TARAYICI (LİSTEDEN SEÇMELİ) ---
+# --- TAB 4: ERİŞİLEBİLİRLİK TARAYICI ---
 with tab4:
     st.header("Gerçek Zamanlı Erişilebilirlik Taraması")
     st.write("Google PageSpeed API kullanarak sitenin **gerçek** erişilebilirlik hatalarını bulur.")
@@ -343,21 +361,24 @@ with tab4:
 # --- TAB 5: OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap) ---
 with tab5:
     st.header("🎯 Otomatik Müşteri Bulucu (OpenStreetMap)")
-    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir ve sektördeki işletmeleri ve web sitelerini otomatik olarak bulur.")
+    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir (veya Tüm Türkiye) ve sektördeki işletmeleri otomatik olarak bulur.")
     
     c1, c2 = st.columns(2)
-    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul)", value="Gaziantep")
+    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul veya Tüm Türkiye)", value="Tüm Türkiye")
     sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "Restoran", "Diş Kliniği", "Avukat", "Kuaför", "Spor Salonu", "Veteriner", "Butik", "Emlak"])
     
+    if sehir.strip().lower() == "tüm türkiye":
+        st.warning("⚠️ Tüm Türkiye taraması çok sayıda veri çekebileceği için 30-60 saniye sürebilir. Lütfen bekleyin.")
+    
     if st.button("İşletmeleri Otomatik Bul", type="primary"):
-        with st.spinner(f"{sehir} şehrindeki {sektor} işletmeleri aranıyor..."):
+        with st.spinner(f"{sehir} bölgesindeki {sektor} işletmeleri aranıyor... (Bu işlem biraz zaman alabilir)"):
             isletmeler = osm_ile_isletme_bul(sehir, sektor)
             
             if isletmeler:
                 st.success(f"Toplam {len(isletmeler)} adet web sitesi olan işletme bulundu!")
                 st.session_state['bulunan_isletmeler'] = isletmeler
             else:
-                st.warning("Belirtilen kriterlerde web sitesi olan işletme bulunamadı. Lütfen şehir adını kontrol edin.")
+                st.warning("Belirtilen kriterlerde web sitesi olan işletme bulunamadı. Lütfen şehir adını kontrol edin veya birkaç dakika sonra tekrar deneyin.")
     
     if 'bulunan_isletmeler' in st.session_state and st.session_state['bulunan_isletmeler']:
         st.write("### Bulunan İşletmeler")
@@ -365,11 +386,13 @@ with tab5:
         st.dataframe(df_bulunan, use_container_width=True, hide_index=True)
         
         # Bulunanları CRM'e Ekleme Butonu
-        if st.button("Bulunanları CRM'e Kaydet"):
+        if st.button("Bulunanları CRM'e Kaydet", type="secondary"):
+            eklenen = 0
             for isletme in st.session_state['bulunan_isletmeler']:
                 execute_query("INSERT INTO leads (firma_adi, sektor, website, durum, tarih) VALUES (?, ?, ?, ?, ?)", 
                               (isletme['isim'], sektor, isletme['website'], 'Yeni Eklendi', datetime.now().strftime("%Y-%m-%d")))
-            st.success("Tüm işletmeler CRM'e kaydedildi! Artık 'Müşteri Adayları' sekmesinden onlara ulaşabilirsiniz.")
+                eklenen += 1
+            st.success(f"{eklenen} işletme CRM'e kaydedildi! Artık 'Müşteri Adayları' sekmesinden onlara ulaşabilirsiniz.")
             st.session_state['bulunan_isletmeler'] = [] # Listeyi temizle
             st.rerun()
 
