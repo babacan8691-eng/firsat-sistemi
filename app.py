@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import requests
-import re
-import time
 from datetime import datetime
 
 # --- SAYFA AYARLARI ---
@@ -52,19 +50,16 @@ def hatayi_cevir(hata_ingilizce):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # 1. Müşteri Adayları (Leads)
     c.execute('''CREATE TABLE IF NOT EXISTS leads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     firma_adi TEXT, sektor TEXT, eposta TEXT, 
                     durum TEXT DEFAULT 'Yeni Eklendi', notlar TEXT, tarih TEXT
                 )''')
-    # 2. Aktif Projeler
     c.execute('''CREATE TABLE IF NOT EXISTS projects (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     musteri TEXT, domain TEXT, anlasilan_ucret REAL, 
                     durum TEXT DEFAULT 'Devam Ediyor', baslangic_tarihi TEXT
                 )''')
-    # 3. Kazançlar
     c.execute('''CREATE TABLE IF NOT EXISTS earnings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     musteri TEXT, miktar REAL, tarih TEXT, aciklama TEXT
@@ -82,9 +77,9 @@ def execute_query(query, params=()):
     conn.commit()
     conn.close()
 
-def fetch_data(query, params=()):
+def fetch_data(query):
     conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql(query, conn, params=params)
+    df = pd.read_sql(query, conn)
     conn.close()
     return df
 
@@ -107,12 +102,14 @@ with tab1:
     df_leads = fetch_data("SELECT * FROM leads")
     df_earnings = fetch_data("SELECT * FROM earnings")
     
+    aktif_projeler = len(df_projects[df_projects['durum'] == 'Devam Ediyor']) if not df_projects.empty else 0
+    tamamlanan_projeler = len(df_projects[df_projects['durum'] == 'Tamamlandı']) if not df_projects.empty else 0
+    toplam_kazanc = df_earnings['miktar'].sum() if not df_earnings.empty else 0
+    
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Toplam Müşteri Adayı", len(df_leads))
-    c2.metric("Aktif Projeler", len(df_projects[df_projects['durum'] == 'Devam Ediyor']) if not df_projects.empty else 0)
-    c3.metric("Tamamlanan Projeler", len(df_projects[df_projects['durum'] == 'Tamamlandı']) if not df_projects.empty else 0)
-    
-    toplam_kazanc = df_earnings['miktar'].sum() if not df_earnings.empty else 0
+    c2.metric("Aktif Projeler", aktif_projeler)
+    c3.metric("Tamamlanan Projeler", tamamlanan_projeler)
     c4.metric("Toplam Kazanç", f"{toplam_kazanc:,.2f} TL")
 
     if not df_leads.empty:
@@ -123,7 +120,7 @@ with tab1:
 with tab2:
     st.header("Müşteri Adayları ve İletişim Takibi")
     with st.expander("➕ Yeni Aday Ekle"):
-        with st.form("add_lead"):
+        with st.form("add_lead", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             firma = c1.text_input("Firma Adı")
             sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "E-Ticaret", "Restoran", "Ajans", "Diğer"])
@@ -160,7 +157,7 @@ with tab2:
 with tab3:
     st.header("Aktif İşler ve Projeler")
     with st.expander("➕ Yeni Proje Ekle"):
-        with st.form("add_proj"):
+        with st.form("add_proj", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             m = c1.text_input("Müşteri Adı")
             d = c2.text_input("Domain (ornek.com)")
@@ -207,27 +204,37 @@ with tab4:
                         r = requests.get(api_url, timeout=30)
                         if r.status_code == 200:
                             data = r.json()
-                            score = data['lighthouseResult']['categories']['accessibility']['score'] * 100
-                            audits = data['lighthouseResult']['audits']
-                            failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
+                            # API bazen boş skor döndürebilir, kontrol ediyoruz
+                            score_raw = data.get('lighthouseResult', {}).get('categories', {}).get('accessibility', {}).get('score')
                             
-                            st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
-                            st.metric("Kritik Hata Sayısı", len(failures))
-                            
-                            st.write("### Tespit Edilen Hatalar ve Çözümleri (Müşteriye Gönderilecek Rapor)")
-                            rapor_metni = f"**{url}** adresinin erişilebilirlik taraması tamamlandı. Skor: **{score}/100**\n\n"
-                            rapor_metni += "**Tespit Edilen Hatalar:**\n"
-                            
-                            for f in failures:
-                                ceviri = hatayi_cevir(f)
-                                st.warning(ceviri)
-                                rapor_metni += f"- {ceviri}\n"
-                            
-                            st.write("---")
-                            st.write("📋 **Raporu Kopyala (Müşteriye göndermek için):**")
-                            st.code(rapor_metni, language="text")
+                            if score_raw is not None:
+                                score = score_raw * 100
+                                audits = data['lighthouseResult']['audits']
+                                failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
+                                
+                                st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
+                                st.metric("Kritik Hata Sayısı", len(failures))
+                                
+                                st.write("### Tespit Edilen Hatalar ve Çözümleri (Müşteriye Gönderilecek Rapor)")
+                                rapor_metni = f"**{url}** adresinin erişilebilirlik taraması tamamlandı. Skor: **{score:.0f}/100**\n\n"
+                                rapor_metni += "**Tespit Edilen Hatalar:**\n"
+                                
+                                if failures:
+                                    for f in failures:
+                                        ceviri = hatayi_cevir(f)
+                                        st.warning(ceviri)
+                                        rapor_metni += f"- {ceviri}\n"
+                                else:
+                                    st.success("Harika! Bu sayfada kritik bir erişilebilirlik hatası bulunamadı.")
+                                    rapor_metni += "- Kritik hata bulunamadı.\n"
+                                
+                                st.write("---")
+                                st.write("📋 **Raporu Kopyala (Müşteriye göndermek için):**")
+                                st.code(rapor_metni, language="text")
+                            else:
+                                st.error("Google API bu site için bir skor döndüremedi. Lütfen URL'yi kontrol edin veya siteyi manuel test edin.")
                         else:
-                            st.error("Site taranamadı. Lütfen URL'yi kontrol edin.")
+                            st.error(f"Site taranamadı. HTTP Kodu: {r.status_code}")
                     except Exception as e:
                         st.error(f"Bağlantı Hatası: {e}")
 
@@ -235,7 +242,7 @@ with tab4:
 with tab5:
     st.header("Finansal Takip")
     with st.expander("➕ Tahsilat / Kazanç Ekle"):
-        with st.form("add_money"):
+        with st.form("add_money", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             m = c1.text_input("Kimden Alındı?")
             miktar = c2.number_input("Miktar (TL)", min_value=0.0)
