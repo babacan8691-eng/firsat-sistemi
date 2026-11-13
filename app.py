@@ -13,7 +13,6 @@ if "logged_in" not in st.session_state:
 
 if not st.session_state.logged_in:
     st.title("🔐 Sisteme Giriş")
-    st.info("Lütfen devam etmek için kullanıcı bilgilerinizi girin.")
     with st.form("login_form"):
         kullanici_adi = st.text_input("Kullanıcı Adı")
         sifre = st.text_input("Şifre", type="password")
@@ -52,7 +51,7 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS leads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    firma_adi TEXT, sektor TEXT, eposta TEXT, 
+                    firma_adi TEXT, sektor TEXT, eposta TEXT, website TEXT,
                     durum TEXT DEFAULT 'Yeni Eklendi', notlar TEXT, tarih TEXT
                 )''')
     c.execute('''CREATE TABLE IF NOT EXISTS projects (
@@ -69,7 +68,6 @@ def init_db():
 
 init_db()
 
-# --- VERİTABANI FONKSİYONLARI ---
 def execute_query(query, params=()):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -121,14 +119,16 @@ with tab2:
     st.header("Müşteri Adayları ve İletişim Takibi")
     with st.expander("➕ Yeni Aday Ekle"):
         with st.form("add_lead", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             firma = c1.text_input("Firma Adı")
             sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "E-Ticaret", "Restoran", "Ajans", "Diğer"])
+            c3, c4 = st.columns(2)
             eposta = c3.text_input("E-posta")
-            notlar = st.text_input("Notlar (Örn: E-posta gönderildi)")
+            website = c4.text_input("Website (örn: ornek.com)") # Website alanı eklendi
+            notlar = st.text_input("Notlar")
             if st.form_submit_button("Kaydet") and firma:
-                execute_query("INSERT INTO leads (firma_adi, sektor, eposta, notlar, tarih) VALUES (?, ?, ?, ?, ?)", 
-                              (firma, sektor, eposta, notlar, datetime.now().strftime("%Y-%m-%d")))
+                execute_query("INSERT INTO leads (firma_adi, sektor, eposta, website, notlar, tarih) VALUES (?, ?, ?, ?, ?, ?)", 
+                              (firma, sektor, eposta, website, notlar, datetime.now().strftime("%Y-%m-%d")))
                 st.success("Aday eklendi!")
                 st.rerun()
 
@@ -139,7 +139,8 @@ with tab2:
                 c1, c2, c3 = st.columns([3, 1, 1])
                 with c1:
                     st.subheader(row['firma_adi'])
-                    st.caption(f"📧 {row['eposta']} | 🏢 {row['sektor']} | 📅 {row['tarih']}")
+                    web_goster = row['website'] if row['website'] else "Web sitesi girilmemiş"
+                    st.caption(f"📧 {row['eposta']} | 🌐 {web_goster} | 🏢 {row['sektor']}")
                     if row['notlar']: st.info(f"Not: {row['notlar']}")
                 with c2:
                     durumlar = ["Yeni Eklendi", "E-posta Gönderildi", "Görüşme Yapıldı", "Müşteri Oldu", "Reddedildi"]
@@ -188,55 +189,91 @@ with tab3:
                         execute_query("DELETE FROM projects WHERE id = ?", (row['id'],))
                         st.rerun()
 
-# --- TAB 4: ERİŞİLEBİLİRLİK TARAYICI (GERÇEK API) ---
+# --- TAB 4: ERİŞİLEBİLİRLİK TARAYICI (LİSTEDEN SEÇMELİ) ---
 with tab4:
     st.header("Gerçek Zamanlı Erişilebilirlik Taraması")
-    st.write("Bu araç, Google PageSpeed API kullanarak sitenin **gerçek** erişilebilirlik hatalarını bulur.")
+    st.write("Google PageSpeed API kullanarak sitenin **gerçek** erişilebilirlik hatalarını bulur.")
     
-    with st.form("scan_form"):
-        url = st.text_input("Taranacak Site (örn: ornek.com)")
-        if st.form_submit_button("Siteyi Tara"):
-            if url:
-                if not url.startswith("http"): url = "https://" + url
-                with st.spinner("Google API üzerinden taranıyor..."):
-                    try:
-                        api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={url}&category=accessibility&key={API_KEY}"
-                        r = requests.get(api_url, timeout=30)
-                        if r.status_code == 200:
-                            data = r.json()
-                            # API bazen boş skor döndürebilir, kontrol ediyoruz
-                            score_raw = data.get('lighthouseResult', {}).get('categories', {}).get('accessibility', {}).get('score')
+    # Tarama kaynağını seçme
+    kaynak = st.radio("Neyi taramak istiyorsun?", ["Kayıtlı Projelerden Seç", "Müşteri Adaylarından Seç", "Manuel URL Gir"], horizontal=True)
+    
+    taranacak_url = ""
+    
+    if kaynak == "Kayıtlı Projelerden Seç":
+        df_proj = fetch_data("SELECT id, musteri, domain FROM projects")
+        if not df_proj.empty:
+            proj_secenekleri = df_proj.apply(lambda x: f"{x['id']} - {x['musteri']} ({x['domain']})", axis=1).tolist()
+            secim = st.selectbox("Proje Seç", proj_secenekleri)
+            secilen_id = int(secim.split(" - ")[0])
+            taranacak_url = df_proj[df_proj['id'] == secilen_id]['domain'].values[0]
+        else:
+            st.warning("Sistemde kayıtlı proje yok.")
+            
+    elif kaynak == "Müşteri Adaylarından Seç":
+        df_leads = fetch_data("SELECT id, firma_adi, website FROM leads")
+        # Sadece website girilmiş olanları filtrele
+        df_leads_valid = df_leads[df_leads['website'].notna() & (df_leads['website'] != "")]
+        if not df_leads_valid.empty:
+            lead_secenekleri = df_leads_valid.apply(lambda x: f"{x['id']} - {x['firma_adi']} ({x['website']})", axis=1).tolist()
+            secim = st.selectbox("Aday Seç", lead_secenekleri)
+            secilen_id = int(secim.split(" - ")[0])
+            taranacak_url = df_leads_valid[df_leads_valid['id'] == secilen_id]['website'].values[0]
+        else:
+            st.warning("Web sitesi girilmiş müşteri adayı bulunamadı. (Lütfen CRM sekmesinden ekleyin).")
+
+    else: # Manuel URL Gir
+        taranacak_url = st.text_input("Taranacak Site (örn: ornek.com)")
+
+    st.divider()
+
+    if st.button("Siteyi Tara", type="primary"):
+        if taranacak_url:
+            # URL formatını düzelt
+            if not taranacak_url.startswith("http"): 
+                taranacak_url = "https://" + taranacak_url
+                
+            with st.spinner(f"{taranacak_url} taranıyor..."):
+                try:
+                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={taranacak_url}&category=accessibility&key={API_KEY}"
+                    r = requests.get(api_url, timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        score_raw = data.get('lighthouseResult', {}).get('categories', {}).get('accessibility', {}).get('score')
+                        
+                        if score_raw is not None:
+                            score = score_raw * 100
+                            audits = data['lighthouseResult']['audits']
+                            failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
                             
-                            if score_raw is not None:
-                                score = score_raw * 100
-                                audits = data['lighthouseResult']['audits']
-                                failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                                
-                                st.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
-                                st.metric("Kritik Hata Sayısı", len(failures))
-                                
-                                st.write("### Tespit Edilen Hatalar ve Çözümleri (Müşteriye Gönderilecek Rapor)")
-                                rapor_metni = f"**{url}** adresinin erişilebilirlik taraması tamamlandı. Skor: **{score:.0f}/100**\n\n"
-                                rapor_metni += "**Tespit Edilen Hatalar:**\n"
-                                
-                                if failures:
-                                    for f in failures:
-                                        ceviri = hatayi_cevir(f)
-                                        st.warning(ceviri)
-                                        rapor_metni += f"- {ceviri}\n"
-                                else:
-                                    st.success("Harika! Bu sayfada kritik bir erişilebilirlik hatası bulunamadı.")
-                                    rapor_metni += "- Kritik hata bulunamadı.\n"
-                                
-                                st.write("---")
-                                st.write("📋 **Raporu Kopyala (Müşteriye göndermek için):**")
-                                st.code(rapor_metni, language="text")
+                            col1, col2 = st.columns(2)
+                            col1.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
+                            col2.metric("Kritik Hata Sayısı", len(failures))
+                            
+                            st.write(f"### {taranacak_url} için Tespit Edilen Hatalar")
+                            
+                            rapor_metni = f"**{taranacak_url}** adresinin erişilebilirlik taraması tamamlandı. Skor: **{score:.0f}/100**\n\n"
+                            rapor_metni += "**Tespit Edilen Hatalar:**\n"
+                            
+                            if failures:
+                                for f in failures:
+                                    ceviri = hatayi_cevir(f)
+                                    st.warning(ceviri)
+                                    rapor_metni += f"- {ceviri}\n"
                             else:
-                                st.error("Google API bu site için bir skor döndüremedi. Lütfen URL'yi kontrol edin veya siteyi manuel test edin.")
+                                st.success("Harika! Bu sayfada kritik bir erişilebilirlik hatası bulunamadı.")
+                                rapor_metni += "- Kritik hata bulunamadı.\n"
+                            
+                            st.write("---")
+                            st.write("📋 **Raporu Kopyala (Müşteriye göndermek için):**")
+                            st.code(rapor_metni, language="text")
                         else:
-                            st.error(f"Site taranamadı. HTTP Kodu: {r.status_code}")
-                    except Exception as e:
-                        st.error(f"Bağlantı Hatası: {e}")
+                            st.error("Google API bu site için bir skor döndüremedi. URL'yi kontrol edin.")
+                    else:
+                        st.error(f"Site taranamadı. HTTP Kodu: {r.status_code}")
+                except Exception as e:
+                    st.error(f"Bağlantı Hatası: {e}")
+        else:
+            st.warning("Lütfen geçerli bir site adresi girin veya listeden seçim yapın.")
 
 # --- TAB 5: KAZANÇLAR ---
 with tab5:
