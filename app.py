@@ -50,13 +50,11 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # GELİŞTİRME AŞAMASI İÇİN: Şema hatalarını önlemek adına tabloları sıfırlıyoruz.
-    # Not: İleride verileriniz biriktiğinde bu DROP satırlarını sileceğiz.
+    # Geliştirme aşamasında şema hatalarını önlemek için tabloları sıfırlıyoruz
     c.execute("DROP TABLE IF EXISTS leads")
     c.execute("DROP TABLE IF EXISTS projects")
     c.execute("DROP TABLE IF EXISTS earnings")
 
-    # Tabloları en güncel sütunlarla yeniden oluştur
     c.execute('''CREATE TABLE IF NOT EXISTS leads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     firma_adi TEXT, sektor TEXT, eposta TEXT, website TEXT,
@@ -89,15 +87,77 @@ def fetch_data(query):
     conn.close()
     return df
 
+# --- OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap / Overpass API) ---
+def osm_ile_isletme_bul(sehir, sektor):
+    """OpenStreetMap üzerinden belirtilen şehir ve sektördeki işletmeleri bulur."""
+    # Sektörleri OSM etiketlerine eşleştirme
+    etiketler = {
+        "Klinik": '["amenity"="clinic"]',
+        "Otel": '["tourism"="hotel"]',
+        "Restoran": '["amenity"="restaurant"]',
+        "Diş Kliniği": '["amenity"="dentist"]',
+        "Avukat": '["office"="lawyer"]',
+        "Kuaför": '["shop"="hairdresser"]',
+        "Spor Salonu": '["leisure"="fitness_centre"]',
+        "Veteriner": '["amenity"="veterinary"]',
+        "Butik": '["shop"="clothes"]',
+        "E-Ticaret": '["shop"="electronics"]',
+        "Emlak": '["office"="estate_agent"]'
+    }
+    
+    sektor_etiketi = etiketler.get(sektor, f'["name"~"{sektor}",i]')
+    
+    # Overpass QL sorgusu
+    query = f"""
+    [out:json][timeout:25];
+    area["name"~"{sehir}"]->.searchArea;
+    (
+      node{sektor_etiketi}(area.searchArea);
+      way{sektor_etiketi}(area.searchArea);
+    );
+    out center tags;
+    """
+    
+    url = "https://overpass-api.de/api/interpreter"
+    headers = {
+        'User-Agent': 'ErisilebilirlikDanismanligi/1.0 (babacan.8691@gmail.com)',
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+    
+    try:
+        response = requests.post(url, data={'data': query}, headers=headers, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            isletmeler = []
+            for element in data.get('elements', []):
+                tags = element.get('tags', {})
+                isim = tags.get('name', 'İsimsiz İşletme')
+                website = tags.get('website', tags.get('contact:website', ''))
+                
+                if website: # Sadece web sitesi olanları al
+                    isletmeler.append({
+                        'isim': isim,
+                        'website': website,
+                        'adres': tags.get('addr:street', '')
+                    })
+            return isletmeler
+        else:
+            st.error(f"OSM API Hatası: {response.status_code}")
+            return []
+    except Exception as e:
+        st.error(f"Bağlantı Hatası: {e}")
+        return []
+
 # --- ARAYÜZ ---
 st.title("🎯 Erişilebilirlik Danışmanlığı İşletim Sistemi")
 st.sidebar.success("Giriş Yapıldı: Cuma Babacan")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Özet Paneli", 
     "👥 Müşteri Adayları (CRM)", 
     "💼 Aktif Projeler", 
     "🔍 Erişilebilirlik Tarayıcı",
+    "🎯 Otomatik Müşteri Bulucu",
     "💰 Kazançlar"
 ])
 
@@ -280,8 +340,41 @@ with tab4:
         else:
             st.warning("Lütfen geçerli bir site adresi girin veya listeden seçim yapın.")
 
-# --- TAB 5: KAZANÇLAR ---
+# --- TAB 5: OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap) ---
 with tab5:
+    st.header("🎯 Otomatik Müşteri Bulucu (OpenStreetMap)")
+    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir ve sektördeki işletmeleri ve web sitelerini otomatik olarak bulur.")
+    
+    c1, c2 = st.columns(2)
+    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul)", value="Gaziantep")
+    sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "Restoran", "Diş Kliniği", "Avukat", "Kuaför", "Spor Salonu", "Veteriner", "Butik", "Emlak"])
+    
+    if st.button("İşletmeleri Otomatik Bul", type="primary"):
+        with st.spinner(f"{sehir} şehrindeki {sektor} işletmeleri aranıyor..."):
+            isletmeler = osm_ile_isletme_bul(sehir, sektor)
+            
+            if isletmeler:
+                st.success(f"Toplam {len(isletmeler)} adet web sitesi olan işletme bulundu!")
+                st.session_state['bulunan_isletmeler'] = isletmeler
+            else:
+                st.warning("Belirtilen kriterlerde web sitesi olan işletme bulunamadı. Lütfen şehir adını kontrol edin.")
+    
+    if 'bulunan_isletmeler' in st.session_state and st.session_state['bulunan_isletmeler']:
+        st.write("### Bulunan İşletmeler")
+        df_bulunan = pd.DataFrame(st.session_state['bulunan_isletmeler'])
+        st.dataframe(df_bulunan, use_container_width=True, hide_index=True)
+        
+        # Bulunanları CRM'e Ekleme Butonu
+        if st.button("Bulunanları CRM'e Kaydet"):
+            for isletme in st.session_state['bulunan_isletmeler']:
+                execute_query("INSERT INTO leads (firma_adi, sektor, website, durum, tarih) VALUES (?, ?, ?, ?, ?)", 
+                              (isletme['isim'], sektor, isletme['website'], 'Yeni Eklendi', datetime.now().strftime("%Y-%m-%d")))
+            st.success("Tüm işletmeler CRM'e kaydedildi! Artık 'Müşteri Adayları' sekmesinden onlara ulaşabilirsiniz.")
+            st.session_state['bulunan_isletmeler'] = [] # Listeyi temizle
+            st.rerun()
+
+# --- TAB 6: KAZANÇLAR ---
+with tab6:
     st.header("Finansal Takip")
     with st.expander("➕ Tahsilat / Kazanç Ekle"):
         with st.form("add_money", clear_on_submit=True):
