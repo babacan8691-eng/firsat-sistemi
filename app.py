@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import requests
+import time
 from datetime import datetime
 
 # --- SAYFA AYARLARI ---
@@ -49,6 +50,7 @@ def hatayi_cevir(hata_ingilizce):
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    
     # Geliştirme aşamasında şema hatalarını önlemek için tabloları sıfırlıyoruz
     c.execute("DROP TABLE IF EXISTS leads")
     c.execute("DROP TABLE IF EXISTS projects")
@@ -87,7 +89,6 @@ def fetch_data(query):
     return df
 
 # --- OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap / Overpass API) ---
-# Alternatif sunucular ve Referer başlığı eklendi
 OVERPASS_URLS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
@@ -97,8 +98,7 @@ OVERPASS_URLS = [
 
 def osm_ile_isletme_bul(sehir, sektor):
     """
-    OpenStreetMap üzerinden belirtilen şehir (veya 'Tüm Türkiye') ve sektördeki işletmeleri bulur.
-    Şehir 'Tüm Türkiye' ise ülke sınırlarını kapsayan bir alan sorgusu kullanır.
+    OpenStreetMap üzerinden belirtilen şehir ve sektördeki işletmeleri bulur.
     """
     etiketler = {
         "Klinik": '["amenity"="clinic"]',
@@ -116,15 +116,13 @@ def osm_ile_isletme_bul(sehir, sektor):
     
     sektor_etiketi = etiketler.get(sektor, f'["name"~"{sektor}",i]')
     
-    # Tüm Türkiye için ülke sınırı alanı, diğer şehirler için şehir adı alanı
     if sehir.strip().lower() == "tüm türkiye":
         alan_sorgusu = 'area["ISO3166-1"="TR"][admin_level=2]'
     else:
         alan_sorgusu = f'area["name"~"{sehir}",i]'
 
-    # Overpass QL sorgusu
     query = f"""
-    [out:json][timeout:60];
+    [out:json][timeout:90];
     {alan_sorgusu}->.searchArea;
     (
       node{sektor_etiketi}(area.searchArea);
@@ -135,12 +133,11 @@ def osm_ile_isletme_bul(sehir, sektor):
     
     headers = {
         'User-Agent': 'ErisilebilirlikDanismanligi/1.0 (babacan.8691@gmail.com)',
-        'Referer': 'https://jqv6paut.streamlit.app/', # Referer eklendi
+        'Referer': 'https://jqv6paut.streamlit.app/',
         'Content-Type': 'application/x-www-form-urlencoded'
     }
     
-    # Sunucuları sırayla dene
-    for url in OVERPASS_URLS:
+    for deneme, url in enumerate(OVERPASS_URLS, 1):
         try:
             response = requests.post(url, data={'data': query}, headers=headers, timeout=60)
             if response.status_code == 200:
@@ -151,22 +148,27 @@ def osm_ile_isletme_bul(sehir, sektor):
                     isim = tags.get('name', 'İsimsiz İşletme')
                     website = tags.get('website', tags.get('contact:website', ''))
                     
-                    if website: # Sadece web sitesi olanları al
+                    if website: 
                         isletmeler.append({
                             'isim': isim,
                             'website': website,
                             'adres': tags.get('addr:street', '')
                         })
                 return isletmeler
-            elif response.status_code == 429: # Rate limit
-                continue # Sonraki sunucuyu dene
+            elif response.status_code == 429:
+                bekleme_suresi = 15 * deneme 
+                st.warning(f"Sunucu {url} şu an meşgul (429). {bekleme_suresi} saniye bekleyip tekrar denenecek...")
+                time.sleep(bekleme_suresi)
+                continue 
             else:
-                continue # Diğer hatalarda da sonraki sunucuyu dene
+                continue 
         except Exception:
-            continue # Bağlantı hatasında sonraki sunucuyu dene
+            continue 
     
-    st.error("Tüm Overpass sunucuları yanıt vermedi. Lütfen daha sonra tekrar deneyin.")
-    return [] # --- ARAYÜZ ---
+    st.error("Tüm Overpass sunucuları yanıt vermedi. Lütfen 10-15 dakika sonra tekrar deneyin veya aramayı 'Tüm Türkiye' yerine tek bir şehir seçerek yapın.")
+    return []
+
+# --- ARAYÜZ ---
 st.title("🎯 Erişilebilirlik Danışmanlığı İşletim Sistemi")
 st.sidebar.success("Giriş Yapıldı: Cuma Babacan")
 
@@ -361,14 +363,11 @@ with tab4:
 # --- TAB 5: OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap) ---
 with tab5:
     st.header("🎯 Otomatik Müşteri Bulucu (OpenStreetMap)")
-    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir (veya Tüm Türkiye) ve sektördeki işletmeleri otomatik olarak bulur.")
+    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir ve sektördeki işletmeleri otomatik olarak bulur.")
     
     c1, c2 = st.columns(2)
-    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul veya Tüm Türkiye)", value="Tüm Türkiye")
+    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul)", value="Gaziantep")
     sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "Restoran", "Diş Kliniği", "Avukat", "Kuaför", "Spor Salonu", "Veteriner", "Butik", "Emlak"])
-    
-    if sehir.strip().lower() == "tüm türkiye":
-        st.warning("⚠️ Tüm Türkiye taraması çok sayıda veri çekebileceği için 30-60 saniye sürebilir. Lütfen bekleyin.")
     
     if st.button("İşletmeleri Otomatik Bul", type="primary"):
         with st.spinner(f"{sehir} bölgesindeki {sektor} işletmeleri aranıyor... (Bu işlem biraz zaman alabilir)"):
@@ -385,7 +384,6 @@ with tab5:
         df_bulunan = pd.DataFrame(st.session_state['bulunan_isletmeler'])
         st.dataframe(df_bulunan, use_container_width=True, hide_index=True)
         
-        # Bulunanları CRM'e Ekleme Butonu
         if st.button("Bulunanları CRM'e Kaydet", type="secondary"):
             eklenen = 0
             for isletme in st.session_state['bulunan_isletmeler']:
@@ -393,7 +391,7 @@ with tab5:
                               (isletme['isim'], sektor, isletme['website'], 'Yeni Eklendi', datetime.now().strftime("%Y-%m-%d")))
                 eklenen += 1
             st.success(f"{eklenen} işletme CRM'e kaydedildi! Artık 'Müşteri Adayları' sekmesinden onlara ulaşabilirsiniz.")
-            st.session_state['bulunan_isletmeler'] = [] # Listeyi temizle
+            st.session_state['bulunan_isletmeler'] = [] 
             st.rerun()
 
 # --- TAB 6: KAZANÇLAR ---
