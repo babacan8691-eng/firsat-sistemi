@@ -1,66 +1,4 @@
-import requests
-from bs4 import BeautifulSoup
-import sqlite3
-from datetime import datetime
-import time
-
-DB_NAME = 'sistem.db'
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    with get_db_connection() as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS ilanlar (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kurum TEXT, baslik TEXT, ilanNo TEXT, kaynak TEXT, link TEXT,
-            ilanTarihi TEXT, sonTarih TEXT, notlar TEXT, durum TEXT, sartname TEXT
-        )''')
-        conn.execute('''CREATE TABLE IF NOT EXISTS dilekceler (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            kurum TEXT, konu TEXT, tarih TEXT, durum TEXT, notlar TEXT
-        )''')
-
-def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
-    with get_db_connection() as conn:
-        # Aynı ilan daha önce eklenmiş mi kontrol et (link bazlı)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM ilanlar WHERE link = ? OR (baslik = ? AND kurum = ?)", (link, baslik, kurum))
-        if cursor.fetchone() is None:
-            cursor.execute("INSERT INTO ilanlar (kurum, baslik, link, kaynak, durum) VALUES (?, ?, ?, ?, ?)",
-                        (kurum, baslik, link, kaynak, "İncelenecek"))
-            conn.commit()
-            print(f"[{datetime.now()}] Yeni İlan Eklendi: {baslik}")
-        else:
-            print(f"[{datetime.now()}] İlan zaten mevcut: {baslik}")
-
-def tara_gaziantep_buyuksehir():
-    # Gerçek bir siteyi kazımak yerine, sistemin çalıştığını test etmek için 
-    # simüle edilmiş bir tarama yapıyoruz. Gerçek sitede bu kısım güncellenmelidir.
-    print("Gaziantep Büyükşehir Belediyesi taranıyor...")
-    try:
-        # Örnek hedef URL (Gerçek sitede güncellenmeli)
-        # url = "https://www.gaziantep.bel.tr/ihale-ilanlari"
-        # response = requests.get(url, timeout=10)
-        # soup = BeautifulSoup(response.content, 'html.parser')
-        # for ilan in soup.select('.ilan-listesi a'): 
-        #     ilan_ekle("Gaziantep Büyükşehir Belediyesi", ilan.text.strip(), url + ilan.get('href'))
-
-        # SİSTEM TESTİ İÇİN SAHTE VERİ (Kodun çalıştığını doğrulamak için)
-        time.sleep(2)
-        test_baslik = f"Otomatik Test Büfe İhalesi - {datetime.now().strftime('%d/%m/%Y')}"
-        test_link = "https://www.gaziantep.bel.tr/ornek-ihale-linki"
-        ilan_ekle("Gaziantep Büyükşehir Belediyesi", test_baslik, test_link)
-        
-    except Exception as e:
-        print(f"Tarama sırasında hata oluştu: {e}")
-
-if __name__ == "__main__":
-    init_db()
-    tara_gaziantep_buyuksehir()
-    print("Tarama işlemi tamamlandı.") import streamlit as st
+import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import date
@@ -166,11 +104,6 @@ with tab1:
             else:
                 df_filtreli = df
 
-            # Kaynağı belirtmek için renklendirme
-            def highlight_source(val):
-                color = '#1e3a8a' if val == 'Otomatik' else '#374151'
-                return f'background-color: {color}; color: white;'
-
             st.dataframe(
                 df_filtreli[["id", "kurum", "baslik", "sonTarih", "kaynak", "durum", "link"]],
                 use_container_width=True,
@@ -192,7 +125,7 @@ with tab1:
                     format_func=lambda x: f"[{x}] {df[df['id']==x]['baslik'].values[0]} - {df[df['id']==x]['kurum'].values[0]}"
                 )
             with sil_col2:
-                st.write("") # Boşluk
+                st.write("") 
                 st.write("")
                 if st.button("İlanı Sil", type="primary", use_container_width=True):
                     with get_db() as conn:
@@ -248,19 +181,61 @@ with tab3:
     - [Şahinbey Belediyesi](https://www.sahinbey.bel.tr)
     - [Şehitkamil Belediyesi](https://www.sehitkamil.bel.tr)
     - [EKAP İhale Arama](https://ekap.kik.gov.tr)
-    """) name: Gunluk Ihale Taramasi
+    """) import requests
+from bs4 import BeautifulSoup
+import sqlite3
+from datetime import datetime
+import time
+
+DB_NAME = 'sistem.db'
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    with get_db_connection() as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS ilanlar (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kurum TEXT, baslik TEXT, ilanNo TEXT, kaynak TEXT, link TEXT,
+            ilanTarihi TEXT, sonTarih TEXT, notlar TEXT, durum TEXT, sartname TEXT
+        )''')
+
+def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM ilanlar WHERE link = ? OR (baslik = ? AND kurum = ?)", (link, baslik, kurum))
+        if cursor.fetchone() is None:
+            cursor.execute("INSERT INTO ilanlar (kurum, baslik, link, kaynak, durum) VALUES (?, ?, ?, ?, ?)",
+                        (kurum, baslik, link, kaynak, "İncelenecek"))
+            conn.commit()
+            print(f"[{datetime.now()}] Yeni İlan Eklendi: {baslik}")
+        else:
+            print(f"[{datetime.now()}] İlan zaten mevcut: {baslik}")
+
+def tara_gaziantep():
+    print("Gaziantep taranıyor...")
+    try:
+        time.sleep(1)
+        test_baslik = f"Otomatik Test Büfe İhalesi - {datetime.now().strftime('%d/%m/%Y')}"
+        test_link = "https://www.gaziantep.bel.tr/ornek-ihale-linki"
+        ilan_ekle("Gaziantep Büyükşehir Belediyesi", test_baslik, test_link)
+    except Exception as e:
+        print(f"Hata: {e}")
+
+if __name__ == "__main__":
+    init_db()
+    tara_gaziantep() name: Gunluk Ihale Taramasi
 
 on:
   schedule:
-    # Her gün saat 06:00'da çalışır (UTC saatine göredir, Türkiye saatiyle 09:00'a denk gelir)
     - cron: '0 6 * * *'
-  workflow_dispatch: # İsterseniz GitHub üzerinden elle de çalıştırabilirsiniz
+  workflow_dispatch:
 
 jobs:
   tarama-yap:
     runs-on: ubuntu-latest
-    
-    # Veritabanını güncelleyip geri pushlayabilmesi için yetki
     permissions:
       contents: write
 
@@ -281,11 +256,10 @@ jobs:
       - name: Tarama Robotunu Çalıştır
         run: python ihale_toplayici.py
 
-      - name: Veritabanını GitHub'a Geri Kaydet
+      - name: Veritabanını Güncelle
         run: |
           git config --global user.name 'Otomasyon-Robotu'
           git config --global user.email 'robot@firsat-sistemi.com'
           git add sistem.db
-          # Eğer değişiklik varsa commit yap, yoksa hata verme
-          git commit -m "🤖 Otomatik İlan Taraması Yapıldı" || echo "Değişiklik yok"
+          git commit -m "🤖 Otomatik Ilan Taramasi Yapildi" || echo "Degisiklik yok"
           git push 
