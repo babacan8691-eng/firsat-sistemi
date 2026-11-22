@@ -46,12 +46,16 @@ def giris_ekrani():
         submit = st.form_submit_button("Giriş Yap")
 
         if submit:
-            # BELİRLEDİĞİNİZ KULLANICI ADI VE ŞİFRE
-            if kullanici == "Cuma Babacan" and sifre == "784512":
+            # Görünmez boşlukları temizle ve büyük/küçük harf duyarsız yap
+            girilen_kullanici = kullanici.strip()
+            girilen_sifre = sifre.strip()
+            
+            # BELİRLEDİĞİNİZ KULLANICI ADI VE ŞİFRE KONTROLÜ
+            if girilen_kullanici.lower() == "cuma babacan" and girilen_sifre == "784512":
                 st.session_state.giris_yapildi = True
                 st.rerun()
             else:
-                st.error("Kullanıcı adı veya şifre hatalı!")
+                st.error("Kullanıcı adı veya şifre hatalı! Lütfen boşluk bırakmadan tekrar deneyin.")
 
 # Giriş yapılmamışsa giriş ekranını göster ve uygulamayı durdur
 if not st.session_state.giris_yapildi:
