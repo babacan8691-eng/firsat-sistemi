@@ -1,417 +1,212 @@
-import streamlit as st
-import pandas as pd
+from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 import sqlite3
-import requests
-import time
-from datetime import datetime
+import os
 
-# --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Erişilebilirlik İşletim Sistemi", layout="wide")
+app = Flask(__name__)
+app.secret_key = 'gizli_anahtar_gaziantep_ihale_784512' # Oturum güvenliği için
 
-# --- GİRİŞ SİSTEMİ ---
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# --- VERİTABANI AYARLARI ---
+def get_db():
+    conn = sqlite3.connect('sistem.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
-if not st.session_state.logged_in:
-    st.title("🔐 Sisteme Giriş")
-    with st.form("login_form"):
-        kullanici_adi = st.text_input("Kullanıcı Adı")
-        sifre = st.text_input("Şifre", type="password")
-        submit = st.form_submit_button("Giriş Yap")
-        if submit:
-            if kullanici_adi.strip() == "Cuma Babacan" and sifre.strip() == "784512":
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Hatalı giriş!")
-    st.stop()
+def init_db():
+    with get_db() as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS ilanlar (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kurum TEXT, baslik TEXT, ilanNo TEXT, kaynak TEXT, link TEXT,
+            ilanTarihi TEXT, sonTarih TEXT, notlar TEXT, durum TEXT, sartname TEXT
+        )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS dilekceler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kurum TEXT, konu TEXT, tarih TEXT, durum TEXT, notlar TEXT
+        )''')
 
-# --- API AYARI ---
-API_KEY = "AIzaSyDPC11iFGbI6ifnbV6pAgsYNjpJgkAMKw4"
-DB_FILE = "cuma_ajans.db"
+# Başlangıçta veritabanını oluştur
+if not os.path.exists('sistem.db'):
+    init_db()
 
-# --- HATA ÇEVİRİ SÖZLÜĞÜ ---
-hata_sozlugu = {
-    "Image elements do not have [alt] attributes": "Görsellerde alt metni eksik.",
-    "Background and foreground colors do not have a sufficient contrast ratio": "Renk kontrastı yetersiz.",
-    "Buttons do not have an accessible name": "Butonların erişilebilir adı yok.",
-    "Links do not have a discernible name": "Linklerin anlaşılır adı yok.",
-    "Document does not have a main landmark": "Ana içerik (main) etiketi eksik.",
-    "<html> element does not have a [lang] attribute": "HTML dil özelliği (lang) eksik.",
-    "Heading elements are not in a sequentially-descending order": "Başlık etiketleri (H1, H2) sıralı değil."
+# --- HTML TASARIMI (Önceki panelin sunucuya uyarlanmış hali) ---
+HTML_SABLONU = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>İhale Takip Paneli</title>
+<style>
+:root { --bg:#0f1720; --card:#1a2430; --line:#2b3a4a; --txt:#e6edf3; --mut:#9fb0c0; --acc:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+* { box-sizing:border-box; }
+body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--bg); color:var(--txt); }
+header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+h1 { font-size:17px; margin:0; }
+main { padding:20px; max-width:1100px; margin:0 auto; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+input, select, textarea { background:#0d151d; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px; width:100%; margin-bottom:8px; }
+.btn { background:var(--acc); color:#fff; border:0; padding:9px 14px; border-radius:8px; cursor:pointer; }
+.btn.err { background:var(--err); }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th, td { text-align:left; padding:8px; border-bottom:1px solid var(--line); font-size:14px; }
+.badge { padding:3px 8px; border-radius:6px; font-size:12px; background:#2b3a4a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📋 İhale & Fırsat Takip Sistemi</h1>
+  <a href="/logout" class="btn err" style="text-decoration:none;">Çıkış Yap</a>
+</header>
+<main>
+  <div class="card">
+    <h3>Yeni İlan Ekle</h3>
+    <div class="grid">
+      <input id="i-kurum" placeholder="Kurum (Örn: Gaziantep Bşb.)">
+      <input id="i-baslik" placeholder="İlan Başlığı (Örn: Büfe Kiralama)">
+      <input id="i-tarih" type="date" title="Son Başvuru Tarihi">
+      <input id="i-link" placeholder="İlan Linki (URL)">
+    </div>
+    <textarea id="i-not" placeholder="Notlar"></textarea>
+    <button class="btn" onclick="ilanEkle()">Kaydet</button>
+  </div>
+
+  <div class="card">
+    <h3>Kayıtlı İlanlar</h3>
+    <table>
+      <thead><tr><th>Kurum</th><th>Başlık</th><th>Son Tarih</th><th>Durum</th><th>İşlem</th></tr></thead>
+      <tbody id="ilan-listesi"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+async function verileriYukle() {
+    const res = await fetch('/api/ilanlar');
+    const ilanlar = await res.json();
+    const tbody = document.getElementById('ilan-listesi');
+    tbody.innerHTML = '';
+    ilanlar.forEach(i => {
+        tbody.innerHTML += `<tr>
+            <td>${i.kurum}</td>
+            <td><a href="${i.link}" target="_blank" style="color:#7cc4ff">${i.baslik}</a></td>
+            <td>${i.sonTarih || '-'}</td>
+            <td><span class="badge">${i.durum}</span></td>
+            <td><button onclick="ilanSil(${i.id})" style="background:none;border:none;color:red;cursor:pointer">Sil</button></td>
+        </tr>`;
+    });
 }
 
-def hatayi_cevir(hata_ingilizce):
-    for key, val in hata_sozlugu.items():
-        if key.lower() in hata_ingilizce.lower(): return val
-    return f"{hata_ingilizce} (Manuel incelenmeli)"
+async function ilanEkle() {
+    const data = {
+        kurum: document.getElementById('i-kurum').value,
+        baslik: document.getElementById('i-baslik').value,
+        sonTarih: document.getElementById('i-tarih').value,
+        link: document.getElementById('i-link').value,
+        notlar: document.getElementById('i-not').value,
+        durum: "İncelenecek"
+    };
+    await fetch('/api/ilanlar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    });
+    verileriYukle();
+}
 
-# --- VERİTABANI KURULUMU ---
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    
-    # Geliştirme aşamasında şema hatalarını önlemek için tabloları sıfırlıyoruz
-    c.execute("DROP TABLE IF EXISTS leads")
-    c.execute("DROP TABLE IF EXISTS projects")
-    c.execute("DROP TABLE IF EXISTS earnings")
-
-    c.execute('''CREATE TABLE IF NOT EXISTS leads (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    firma_adi TEXT, sektor TEXT, eposta TEXT, website TEXT,
-                    durum TEXT DEFAULT 'Yeni Eklendi', notlar TEXT, tarih TEXT
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS projects (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    musteri TEXT, domain TEXT, anlasilan_ucret REAL, 
-                    durum TEXT DEFAULT 'Devam Ediyor', baslangic_tarihi TEXT
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS earnings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    musteri TEXT, miktar REAL, tarih TEXT, aciklama TEXT
-                )''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
-def execute_query(query, params=()):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute(query, params)
-    conn.commit()
-    conn.close()
-
-def fetch_data(query):
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql(query, conn)
-    conn.close()
-    return df
-
-# --- OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap / Overpass API) ---
-OVERPASS_URLS = [
-    "https://overpass-api.de/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
-]
-
-def osm_ile_isletme_bul(sehir, sektor):
-    """
-    OpenStreetMap üzerinden belirtilen şehir ve sektördeki işletmeleri bulur.
-    """
-    etiketler = {
-        "Klinik": '["amenity"="clinic"]',
-        "Otel": '["tourism"="hotel"]',
-        "Restoran": '["amenity"="restaurant"]',
-        "Diş Kliniği": '["amenity"="dentist"]',
-        "Avukat": '["office"="lawyer"]',
-        "Kuaför": '["shop"="hairdresser"]',
-        "Spor Salonu": '["leisure"="fitness_centre"]',
-        "Veteriner": '["amenity"="veterinary"]',
-        "Butik": '["shop"="clothes"]',
-        "E-Ticaret": '["shop"="electronics"]',
-        "Emlak": '["office"="estate_agent"]'
+async function ilanSil(id) {
+    if(confirm('Silinsin mi?')) {
+        await fetch('/api/ilanlar/' + id, {method: 'DELETE'});
+        verileriYukle();
     }
-    
-    sektor_etiketi = etiketler.get(sektor, f'["name"~"{sektor}",i]')
-    
-    if sehir.strip().lower() == "tüm türkiye":
-        alan_sorgusu = 'area["ISO3166-1"="TR"][admin_level=2]'
-    else:
-        alan_sorgusu = f'area["name"~"{sehir}",i]'
+}
+verileriYukle();
+</script>
+</body>
+</html>
+"""
 
-    query = f"""
-    [out:json][timeout:90];
-    {alan_sorgusu}->.searchArea;
-    (
-      node{sektor_etiketi}(area.searchArea);
-      way{sektor_etiketi}(area.searchArea);
-    );
-    out center tags;
-    """
-    
-    headers = {
-        'User-Agent': 'ErisilebilirlikDanismanligi/1.0 (babacan.8691@gmail.com)',
-        'Referer': 'https://jqv6paut.streamlit.app/',
-        'Content-Type': 'application/x-www-form-urlencoded'
-    }
-    
-    for deneme, url in enumerate(OVERPASS_URLS, 1):
-        try:
-            response = requests.post(url, data={'data': query}, headers=headers, timeout=60)
-            if response.status_code == 200:
-                data = response.json()
-                isletmeler = []
-                for element in data.get('elements', []):
-                    tags = element.get('tags', {})
-                    isim = tags.get('name', 'İsimsiz İşletme')
-                    website = tags.get('website', tags.get('contact:website', ''))
-                    
-                    if website: 
-                        isletmeler.append({
-                            'isim': isim,
-                            'website': website,
-                            'adres': tags.get('addr:street', '')
-                        })
-                return isletmeler
-            elif response.status_code == 429:
-                bekleme_suresi = 15 * deneme 
-                st.warning(f"Sunucu {url} şu an meşgul (429). {bekleme_suresi} saniye bekleyip tekrar denenecek...")
-                time.sleep(bekleme_suresi)
-                continue 
-            else:
-                continue 
-        except Exception:
-            continue 
-    
-    st.error("Tüm Overpass sunucuları yanıt vermedi. Lütfen 10-15 dakika sonra tekrar deneyin veya aramayı 'Tüm Türkiye' yerine tek bir şehir seçerek yapın.")
-    return []
+# --- GİRİŞ EKRANI TASARIMI ---
+GIRIS_SABLONU = """
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giriş Yap</title>
+<style>
+body { background:#0f1720; color:#fff; font-family:system-ui; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
+.card { background:#1a2430; padding:30px; border-radius:12px; width:300px; border:1px solid #2b3a4a; }
+input { width:100%; padding:10px; margin:10px 0; border-radius:6px; border:1px solid #333; background:#0d151d; color:#fff; box-sizing:border-box; }
+button { width:100%; padding:10px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; }
+h2 { text-align:center; margin-top:0; }
+</style>
+</head>
+<body>
+<div class="card">
+    <h2>Sisteme Giriş</h2>
+    {% if hata %}<p style="color:red;text-align:center;">{{ hata }}</p>{% endif %}
+    <form method="POST">
+        <input type="text" name="kullanici" placeholder="Kullanıcı Adı" required>
+        <input type="password" name="sifre" placeholder="Şifre" required>
+        <button type="submit">Giriş Yap</button>
+    </form>
+</div>
+</body>
+</html>
+"""
 
-# --- ARAYÜZ ---
-st.title("🎯 Erişilebilirlik Danışmanlığı İşletim Sistemi")
-st.sidebar.success("Giriş Yapıldı: Cuma Babacan")
+# --- ROTALAR (ROUTES) ---
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Özet Paneli", 
-    "👥 Müşteri Adayları (CRM)", 
-    "💼 Aktif Projeler", 
-    "🔍 Erişilebilirlik Tarayıcı",
-    "🎯 Otomatik Müşteri Bulucu",
-    "💰 Kazançlar"
-])
-
-# --- TAB 1: ÖZET PANELİ ---
-with tab1:
-    st.header("Genel Durum")
-    df_projects = fetch_data("SELECT * FROM projects")
-    df_leads = fetch_data("SELECT * FROM leads")
-    df_earnings = fetch_data("SELECT * FROM earnings")
-    
-    aktif_projeler = len(df_projects[df_projects['durum'] == 'Devam Ediyor']) if not df_projects.empty else 0
-    tamamlanan_projeler = len(df_projects[df_projects['durum'] == 'Tamamlandı']) if not df_projects.empty else 0
-    toplam_kazanc = df_earnings['miktar'].sum() if not df_earnings.empty else 0
-    
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Toplam Müşteri Adayı", len(df_leads))
-    c2.metric("Aktif Projeler", aktif_projeler)
-    c3.metric("Tamamlanan Projeler", tamamlanan_projeler)
-    c4.metric("Toplam Kazanç", f"{toplam_kazanc:,.2f} TL")
-
-    if not df_leads.empty:
-        st.subheader("Müşteri Adayı Hunisi (CRM)")
-        st.bar_chart(df_leads['durum'].value_counts(), color="#00C853")
-
-# --- TAB 2: MÜŞTERİ ADAYLARI (CRM) ---
-with tab2:
-    st.header("Müşteri Adayları ve İletişim Takibi")
-    with st.expander("➕ Yeni Aday Ekle"):
-        with st.form("add_lead", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            firma = c1.text_input("Firma Adı")
-            sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "E-Ticaret", "Restoran", "Ajans", "Diğer"])
-            c3, c4 = st.columns(2)
-            eposta = c3.text_input("E-posta")
-            website = c4.text_input("Website (örn: ornek.com)")
-            notlar = st.text_input("Notlar")
-            if st.form_submit_button("Kaydet") and firma:
-                execute_query("INSERT INTO leads (firma_adi, sektor, eposta, website, notlar, tarih) VALUES (?, ?, ?, ?, ?, ?)", 
-                              (firma, sektor, eposta, website, notlar, datetime.now().strftime("%Y-%m-%d")))
-                st.success("Aday eklendi!")
-                st.rerun()
-
-    df_leads = fetch_data("SELECT * FROM leads ORDER BY id DESC")
-    if not df_leads.empty:
-        for _, row in df_leads.iterrows():
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([3, 1, 1])
-                with c1:
-                    st.subheader(row['firma_adi'])
-                    web_goster = row['website'] if row['website'] else "Web sitesi girilmemiş"
-                    st.caption(f"📧 {row['eposta']} | 🌐 {web_goster} | 🏢 {row['sektor']}")
-                    if row['notlar']: st.info(f"Not: {row['notlar']}")
-                with c2:
-                    durumlar = ["Yeni Eklendi", "E-posta Gönderildi", "Görüşme Yapıldı", "Müşteri Oldu", "Reddedildi"]
-                    idx = durumlar.index(row['durum']) if row['durum'] in durumlar else 0
-                    yeni_durum = st.selectbox("Durum", durumlar, index=idx, key=f"lead_{row['id']}")
-                    if yeni_durum != row['durum']:
-                        execute_query("UPDATE leads SET durum = ? WHERE id = ?", (yeni_durum, row['id']))
-                        st.rerun()
-                with c3:
-                    if st.button("🗑️ Sil", key=f"del_lead_{row['id']}"):
-                        execute_query("DELETE FROM leads WHERE id = ?", (row['id'],))
-                        st.rerun()
-
-# --- TAB 3: AKTİF PROJELER ---
-with tab3:
-    st.header("Aktif İşler ve Projeler")
-    with st.expander("➕ Yeni Proje Ekle"):
-        with st.form("add_proj", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            m = c1.text_input("Müşteri Adı")
-            d = c2.text_input("Domain (ornek.com)")
-            u = c3.number_input("Anlaşılan Ücret (TL)", min_value=0.0)
-            if st.form_submit_button("Projeyi Başlat") and m and d:
-                execute_query("INSERT INTO projects (musteri, domain, anlasilan_ucret, baslangic_tarihi) VALUES (?, ?, ?, ?)", 
-                              (m, d, u, datetime.now().strftime("%Y-%m-%d")))
-                st.success("Proje eklendi!")
-                st.rerun()
-
-    df_proj = fetch_data("SELECT * FROM projects ORDER BY id DESC")
-    if not df_proj.empty:
-        for _, row in df_proj.iterrows():
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([3, 1, 1])
-                with c1:
-                    st.subheader(f"{row['musteri']} - {row['domain']}")
-                    st.caption(f"💰 {row['anlasilan_ucret']} TL | 📅 {row['baslangic_tarihi']}")
-                with c2:
-                    durumlar = ["Devam Ediyor", "Rapor Teslim Edildi", "Tamamlandı", "İptal"]
-                    idx = durumlar.index(row['durum']) if row['durum'] in durumlar else 0
-                    yd = st.selectbox("Durum", durumlar, index=idx, key=f"proj_{row['id']}")
-                    if yd != row['durum']:
-                        execute_query("UPDATE projects SET durum = ? WHERE id = ?", (yd, row['id']))
-                        st.rerun()
-                with c3:
-                    if st.button("🗑️ Sil", key=f"del_proj_{row['id']}"):
-                        execute_query("DELETE FROM projects WHERE id = ?", (row['id'],))
-                        st.rerun()
-
-# --- TAB 4: ERİŞİLEBİLİRLİK TARAYICI ---
-with tab4:
-    st.header("Gerçek Zamanlı Erişilebilirlik Taraması")
-    st.write("Google PageSpeed API kullanarak sitenin **gerçek** erişilebilirlik hatalarını bulur.")
-    
-    kaynak = st.radio("Neyi taramak istiyorsun?", ["Kayıtlı Projelerden Seç", "Müşteri Adaylarından Seç", "Manuel URL Gir"], horizontal=True)
-    
-    taranacak_url = ""
-    
-    if kaynak == "Kayıtlı Projelerden Seç":
-        df_proj = fetch_data("SELECT id, musteri, domain FROM projects")
-        if not df_proj.empty:
-            proj_secenekleri = df_proj.apply(lambda x: f"{x['id']} - {x['musteri']} ({x['domain']})", axis=1).tolist()
-            secim = st.selectbox("Proje Seç", proj_secenekleri)
-            secilen_id = int(secim.split(" - ")[0])
-            taranacak_url = df_proj[df_proj['id'] == secilen_id]['domain'].values[0]
-        else:
-            st.warning("Sistemde kayıtlı proje yok.")
-            
-    elif kaynak == "Müşteri Adaylarından Seç":
-        df_leads = fetch_data("SELECT id, firma_adi, website FROM leads")
-        df_leads_valid = df_leads[df_leads['website'].notna() & (df_leads['website'] != "")]
-        if not df_leads_valid.empty:
-            lead_secenekleri = df_leads_valid.apply(lambda x: f"{x['id']} - {x['firma_adi']} ({x['website']})", axis=1).tolist()
-            secim = st.selectbox("Aday Seç", lead_secenekleri)
-            secilen_id = int(secim.split(" - ")[0])
-            taranacak_url = df_leads_valid[df_leads_valid['id'] == secilen_id]['website'].values[0]
-        else:
-            st.warning("Web sitesi girilmiş müşteri adayı bulunamadı.")
-
-    else:
-        taranacak_url = st.text_input("Taranacak Site (örn: ornek.com)")
-
-    st.divider()
-
-    if st.button("Siteyi Tara", type="primary"):
-        if taranacak_url:
-            if not taranacak_url.startswith("http"): 
-                taranacak_url = "https://" + taranacak_url
-                
-            with st.spinner(f"{taranacak_url} taranıyor..."):
-                try:
-                    api_url = f"https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url={taranacak_url}&category=accessibility&key={API_KEY}"
-                    r = requests.get(api_url, timeout=30)
-                    if r.status_code == 200:
-                        data = r.json()
-                        score_raw = data.get('lighthouseResult', {}).get('categories', {}).get('accessibility', {}).get('score')
-                        
-                        if score_raw is not None:
-                            score = score_raw * 100
-                            audits = data['lighthouseResult']['audits']
-                            failures = [d['title'] for a, d in audits.items() if d.get('score') == 0]
-                            
-                            col1, col2 = st.columns(2)
-                            col1.metric("Erişilebilirlik Skoru", f"{score:.0f}/100")
-                            col2.metric("Kritik Hata Sayısı", len(failures))
-                            
-                            st.write(f"### {taranacak_url} için Tespit Edilen Hatalar")
-                            
-                            rapor_metni = f"**{taranacak_url}** adresinin erişilebilirlik taraması tamamlandı. Skor: **{score:.0f}/100**\n\n"
-                            rapor_metni += "**Tespit Edilen Hatalar:**\n"
-                            
-                            if failures:
-                                for f in failures:
-                                    ceviri = hatayi_cevir(f)
-                                    st.warning(ceviri)
-                                    rapor_metni += f"- {ceviri}\n"
-                            else:
-                                st.success("Harika! Bu sayfada kritik bir erişilebilirlik hatası bulunamadı.")
-                                rapor_metni += "- Kritik hata bulunamadı.\n"
-                            
-                            st.write("---")
-                            st.write("📋 **Raporu Kopyala (Müşteriye göndermek için):**")
-                            st.code(rapor_metni, language="text")
-                        else:
-                            st.error("Google API bu site için bir skor döndüremedi. URL'yi kontrol edin.")
-                    else:
-                        st.error(f"Site taranamadı. HTTP Kodu: {r.status_code}")
-                except Exception as e:
-                    st.error(f"Bağlantı Hatası: {e}")
-        else:
-            st.warning("Lütfen geçerli bir site adresi girin veya listeden seçim yapın.")
-
-# --- TAB 5: OTOMATİK MÜŞTERİ BULUCU (OpenStreetMap) ---
-with tab5:
-    st.header("🎯 Otomatik Müşteri Bulucu (OpenStreetMap)")
-    st.write("Bu araç, tamamen ücretsiz olan OpenStreetMap veritabanını kullanarak seçtiğiniz şehir ve sektördeki işletmeleri otomatik olarak bulur.")
-    
-    c1, c2 = st.columns(2)
-    sehir = c1.text_input("Şehir (örn: Gaziantep, İstanbul)", value="Gaziantep")
-    sektor = c2.selectbox("Sektör", ["Otel", "Klinik", "Restoran", "Diş Kliniği", "Avukat", "Kuaför", "Spor Salonu", "Veteriner", "Butik", "Emlak"])
-    
-    if st.button("İşletmeleri Otomatik Bul", type="primary"):
-        with st.spinner(f"{sehir} bölgesindeki {sektor} işletmeleri aranıyor... (Bu işlem biraz zaman alabilir)"):
-            isletmeler = osm_ile_isletme_bul(sehir, sektor)
-            
-            if isletmeler:
-                st.success(f"Toplam {len(isletmeler)} adet web sitesi olan işletme bulundu!")
-                st.session_state['bulunan_isletmeler'] = isletmeler
-            else:
-                st.warning("Belirtilen kriterlerde web sitesi olan işletme bulunamadı. Lütfen şehir adını kontrol edin veya birkaç dakika sonra tekrar deneyin.")
-    
-    if 'bulunan_isletmeler' in st.session_state and st.session_state['bulunan_isletmeler']:
-        st.write("### Bulunan İşletmeler")
-        df_bulunan = pd.DataFrame(st.session_state['bulunan_isletmeler'])
-        st.dataframe(df_bulunan, use_container_width=True, hide_index=True)
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        kullanici = request.form.get('kullanici')
+        sifre = request.form.get('sifre')
         
-        if st.button("Bulunanları CRM'e Kaydet", type="secondary"):
-            eklenen = 0
-            for isletme in st.session_state['bulunan_isletmeler']:
-                execute_query("INSERT INTO leads (firma_adi, sektor, website, durum, tarih) VALUES (?, ?, ?, ?, ?)", 
-                              (isletme['isim'], sektor, isletme['website'], 'Yeni Eklendi', datetime.now().strftime("%Y-%m-%d")))
-                eklenen += 1
-            st.success(f"{eklenen} işletme CRM'e kaydedildi! Artık 'Müşteri Adayları' sekmesinden onlara ulaşabilirsiniz.")
-            st.session_state['bulunan_isletmeler'] = [] 
-            st.rerun()
+        # BELİRLEDİĞİNİZ KULLANICI ADI VE ŞİFRE KONTROLÜ
+        if kullanici == "Cuma Babacan" and sifre == "784512":
+            session['giris_yapildi'] = True
+            return redirect(url_for('panel'))
+        else:
+            return render_template_string(GIRIS_SABLONU, hata="Kullanıcı adı veya şifre hatalı!")
+            
+    return render_template_string(GIRIS_SABLONU, hata=None)
 
-# --- TAB 6: KAZANÇLAR ---
-with tab6:
-    st.header("Finansal Takip")
-    with st.expander("➕ Tahsilat / Kazanç Ekle"):
-        with st.form("add_money", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            m = c1.text_input("Kimden Alındı?")
-            miktar = c2.number_input("Miktar (TL)", min_value=0.0)
-            aciklama = c3.text_input("Açıklama")
-            if st.form_submit_button("Kaydet") and m and miktar > 0:
-                execute_query("INSERT INTO earnings (musteri, miktar, aciklama, tarih) VALUES (?, ?, ?, ?)", 
-                              (m, miktar, aciklama, datetime.now().strftime("%Y-%m-%d")))
-                st.success("Kazanç eklendi!")
-                st.rerun()
+@app.route('/logout')
+def logout():
+    session.pop('giris_yapildi', None)
+    return redirect(url_for('login'))
 
-    df_money = fetch_data("SELECT * FROM earnings ORDER BY id DESC")
-    if not df_money.empty:
-        st.dataframe(df_money[['tarih', 'musteri', 'miktar', 'aciklama']], use_container_width=True, hide_index=True)
-        st.metric("Toplam Tahsil Edilen", f"{df_money['miktar'].sum():,.2f} TL")
-    else:
-        st.info("Henüz kazanç kaydı yok.")
+@app.route('/')
+def panel():
+    if not session.get('giris_yapildi'):
+        return redirect(url_for('login'))
+    return render_template_string(HTML_SABLONU)
+
+# --- API UÇ NOKTALARI (Veri Alışverişi) ---
+
+@app.route('/api/ilanlar', methods=['GET'])
+def ilanlari_getir():
+    if not session.get('giris_yapildi'): return jsonify({"hata": "Yetkisiz"}), 401
+    with get_db() as conn:
+        ilanlar = conn.execute('SELECT * FROM ilanlar ORDER BY sonTarih ASC').fetchall()
+        return jsonify([dict(i) for i in ilanlar])
+
+@app.route('/api/ilanlar', methods=['POST'])
+def ilan_ekle():
+    if not session.get('giris_yapildi'): return jsonify({"hata": "Yetkisiz"}), 401
+    data = request.json
+    with get_db() as conn:
+        conn.execute('INSERT INTO ilanlar (kurum, baslik, sonTarih, link, notlar, durum) VALUES (?, ?, ?, ?, ?, ?)',
+                     (data['kurum'], data['baslik'], data['sonTarih'], data['link'], data['notlar'], data['durum']))
+    return jsonify({"basarili": True})
+
+@app.route('/api/ilanlar/<int:id>', methods=['DELETE'])
+def ilan_sil(id):
+    if not session.get('giris_yapildi'): return jsonify({"hata": "Yetkisiz"}), 401
+    with get_db() as conn:
+        conn.execute('DELETE FROM ilanlar WHERE id = ?', (id,))
+    return jsonify({"basarili": True})
+
+if __name__ == '__main__':
+    app.run(debug=True)
