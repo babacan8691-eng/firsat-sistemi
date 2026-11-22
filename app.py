@@ -5,7 +5,7 @@ from datetime import date
 import os
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="İhale Takip Paneli", page_icon="📋", layout="wide")
+st.set_page_config(page_title="İhale & Fırsat Takip Sistemi", page_icon="📋", layout="wide")
 
 # --- VERİTABANI AYARLARI ---
 DB_NAME = "sistem.db"
@@ -42,12 +42,12 @@ def giris_ekrani():
         submit = st.form_submit_button("Giriş Yap")
         
         if submit:
-            # Görünmez boşlukları temizle ve büyük/küçük harf duyarsız yap
+            # Görünmez boşlukları temizler ve büyük/küçük harf duyarsız yapar
             if kullanici.strip().lower() == "cuma babacan" and sifre.strip() == "784512":
                 st.session_state.giris_yapildi = True
                 st.rerun()
             else:
-                st.error("Kullanıcı adı veya şifre hatalı! Lütfen boşluk bırakmadan tekrar deneyin.")
+                st.error("Kullanıcı adı veya şifre hatalı!")
 
 if not st.session_state.giris_yapildi:
     giris_ekrani()
@@ -97,7 +97,6 @@ with tab1:
             df = pd.read_sql_query("SELECT * FROM ilanlar ORDER BY id DESC", conn)
 
         if not df.empty:
-            # Arama filtresi
             if arama:
                 mask = df.apply(lambda row: arama.lower() in str(row['kurum']).lower() or 
                                             arama.lower() in str(row['baslik']).lower() or 
@@ -117,7 +116,6 @@ with tab1:
                 }
             )
 
-            # Silme işlemi
             st.markdown("---")
             sil_col1, sil_col2 = st.columns([3, 1])
             with sil_col1:
@@ -135,7 +133,7 @@ with tab1:
                     st.success("İlan silindi.")
                     st.rerun()
         else:
-            st.info("Henüz kayıtlı ilan bulunmamaktadır. Otomasyon çalıştığında buraya ilanlar düşecektir.")
+            st.info("Henüz kayıtlı ilan bulunmamaktadır. Sağ üstteki 'Yönet' > 'Reboot' diyerek sistemi yenileyin.")
 
 with tab2:
     st.subheader("Dilekçe ve Yazışma Takibi")
@@ -172,18 +170,13 @@ with tab2:
 
 with tab3:
     st.subheader("Engelli Hakları ve İhale Avantajları")
-    st.info("""
-    **Önemli Bilgi:** 2886 Sayılı Kanun'a göre belediyeler, kendi encümen kararlarıyla engelli bireylere özel büfe/çay bahçesi ihaleleri düzenleyebilir (örn. Elazığ, Kepez örnekleri). 
-    Sisteme düşen ilanların şartnamelerini incelerken **"engelli", "kontenjan", "öncelik"** kelimelerine dikkat edin.
-    """)
+    st.info("Önemli Bilgi: 2886 Sayılı Kanun'a göre belediyeler, kendi encümen kararlarıyla engelli bireylere özel büfe/çay bahçesi ihaleleri düzenleyebilir. Sisteme düşen ilanların şartnamelerini incelerken 'engelli', 'kontenjan', 'öncelik' kelimelerine dikkat edin.")
     
     st.subheader("Takip Edilecek Linkler")
-    st.markdown("""
-    - [Gaziantep Büyükşehir Belediyesi](https://www.gaziantep.bel.tr)
-    - [Şahinbey Belediyesi](https://www.sahinbey.bel.tr)
-    - [Şehitkamil Belediyesi](https://www.sehitkamil.bel.tr)
-    - [EKAP İhale Arama](https://ekap.kik.gov.tr)
-    """) import requests
+    st.markdown("- [Gaziantep Büyükşehir Belediyesi](https://www.gaziantep.bel.tr)")
+    st.markdown("- [Şahinbey Belediyesi](https://www.sahinbey.bel.tr)")
+    st.markdown("- [Şehitkamil Belediyesi](https://www.sehitkamil.bel.tr)")
+    st.markdown("- [EKAP İhale Arama](https://ekap.kik.gov.tr)") import requests
 from bs4 import BeautifulSoup
 import sqlite3
 from datetime import datetime
@@ -207,7 +200,6 @@ def init_db():
 def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        # Aynı ilan daha önce eklenmiş mi kontrol et
         cursor.execute("SELECT id FROM ilanlar WHERE link = ? OR (baslik = ? AND kurum = ?)", (link, baslik, kurum))
         if cursor.fetchone() is None:
             cursor.execute("INSERT INTO ilanlar (kurum, baslik, link, kaynak, durum) VALUES (?, ?, ?, ?, ?)",
@@ -220,13 +212,12 @@ def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
 def tara_gaziantep():
     print("Gaziantep taranıyor...")
     try:
-        # Gerçek bir siteyi kazımak yerine test amaçlı veri ekliyoruz
         time.sleep(1)
         test_baslik = f"Otomatik Test Büfe İhalesi - {datetime.now().strftime('%d/%m/%Y')}"
         test_link = "https://www.gaziantep.bel.tr/ornek-ihale-linki"
         ilan_ekle("Gaziantep Büyükşehir Belediyesi", test_baslik, test_link)
     except Exception as e:
-        print(f"Hata oluştu: {e}")
+        print(f"Hata: {e}")
 
 if __name__ == "__main__":
     init_db()
