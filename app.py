@@ -40,24 +40,26 @@ def giris_ekrani():
         kullanici = st.text_input("Kullanıcı Adı")
         sifre = st.text_input("Şifre", type="password")
         submit = st.form_submit_button("Giriş Yap")
+        
         if submit:
+            # Görünmez boşlukları temizle ve büyük/küçük harf duyarsız yap
             if kullanici.strip().lower() == "cuma babacan" and sifre.strip() == "784512":
                 st.session_state.giris_yapildi = True
                 st.rerun()
             else:
-                st.error("Kullanıcı adı veya şifre hatalı!")
+                st.error("Kullanıcı adı veya şifre hatalı! Lütfen boşluk bırakmadan tekrar deneyin.")
 
 if not st.session_state.giris_yapildi:
     giris_ekrani()
     st.stop()
 
 # --- ANA UYGULAMA ---
-if st.sidebar.button("🚪 Çıkış Yap"):
+if st.sidebar.button("🚪 Çıkış Yap", use_container_width=True):
     st.session_state.giris_yapildi = False
     st.rerun()
 
 st.title("📋 İhale & Fırsat Takip Sistemi")
-st.markdown("Sistem her gün otomatik olarak güncellenmektedir. Aşağıdan yeni ilanları takip edebilirsiniz.")
+st.markdown("Sistem her gün otomatik olarak güncellenmektedir. Aşağıdan ilanları takip edebilirsiniz.")
 
 tab1, tab2, tab3 = st.tabs(["📌 İlanlar", "📄 Dilekçeler", "ℹ️ Kaynaklar & Belgeler"])
 
@@ -133,7 +135,7 @@ with tab1:
                     st.success("İlan silindi.")
                     st.rerun()
         else:
-            st.info("Henüz kayıtlı ilan bulunmamaktadır. Sağ üstteki 'Yönet' > 'Reboot' diyerek sistemi yenileyin.")
+            st.info("Henüz kayıtlı ilan bulunmamaktadır. Otomasyon çalıştığında buraya ilanlar düşecektir.")
 
 with tab2:
     st.subheader("Dilekçe ve Yazışma Takibi")
@@ -205,6 +207,7 @@ def init_db():
 def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        # Aynı ilan daha önce eklenmiş mi kontrol et
         cursor.execute("SELECT id FROM ilanlar WHERE link = ? OR (baslik = ? AND kurum = ?)", (link, baslik, kurum))
         if cursor.fetchone() is None:
             cursor.execute("INSERT INTO ilanlar (kurum, baslik, link, kaynak, durum) VALUES (?, ?, ?, ?, ?)",
@@ -217,49 +220,14 @@ def ilan_ekle(kurum, baslik, link, kaynak="Otomatik"):
 def tara_gaziantep():
     print("Gaziantep taranıyor...")
     try:
+        # Gerçek bir siteyi kazımak yerine test amaçlı veri ekliyoruz
         time.sleep(1)
         test_baslik = f"Otomatik Test Büfe İhalesi - {datetime.now().strftime('%d/%m/%Y')}"
         test_link = "https://www.gaziantep.bel.tr/ornek-ihale-linki"
         ilan_ekle("Gaziantep Büyükşehir Belediyesi", test_baslik, test_link)
     except Exception as e:
-        print(f"Hata: {e}")
+        print(f"Hata oluştu: {e}")
 
 if __name__ == "__main__":
     init_db()
-    tara_gaziantep() name: Gunluk Ihale Taramasi
-
-on:
-  schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch:
-
-jobs:
-  tarama-yap:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Kodu Çek
-        uses: actions/checkout@v4
-
-      - name: Python Kur
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Kütüphaneleri Yükle
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
-
-      - name: Tarama Robotunu Çalıştır
-        run: python ihale_toplayici.py
-
-      - name: Veritabanını Güncelle
-        run: |
-          git config --global user.name 'Otomasyon-Robotu'
-          git config --global user.email 'robot@firsat-sistemi.com'
-          git add sistem.db
-          git commit -m "🤖 Otomatik Ilan Taramasi Yapildi" || echo "Degisiklik yok"
-          git push 
+    tara_gaziantep() 
