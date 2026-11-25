@@ -5,13 +5,20 @@ import streamlit as st
 import yfinance as yf
 from streamlit_autorefresh import st_autorefresh
 
-from veri.katilim_listesi import KATILIM_VARLIKLARI
-
 st.set_page_config(
-    page_title="BIST Katılım Takip & Analiz Paneli",
+    page_title="Katılım Takip & Analiz Paneli",
     page_icon="🟢",
     layout="wide",
 )
+
+# İslami / katılım hassasiyetine uygun aday liste (BIST sembolleri .IS uzantısıyla)
+KATILIM_VARLIKLARI = [
+    {"kod": "GLDTR.IS", "ad": "QNB Altın Katılım BYF", "tur": "Katılım BYF"},
+    {"kod": "GMSTR.IS", "ad": "QNB Gümüş Katılım BYF", "tur": "Katılım BYF"},
+    {"kod": "THYAO.IS", "ad": "Türk Hava Yolları (Katılım Örnek)", "tur": "Pay Senedi"},
+    {"kod": "BIMAS.IS", "ad": "BİM Mağazalar (Katılım Örnek)", "tur": "Pay Senedi"},
+    {"kod": "TUPRS.IS", "ad": "Tüpraş (Katılım Örnek)", "tur": "Pay Senedi"},
+]
 
 # Kullanıcı adı ve şifre kontrolü
 KULLANICI_ADI = "Cuma Babacan"
@@ -107,7 +114,6 @@ for varlik in KATILIM_VARLIKLARI:
         })
         continue
 
-    # Son 5 tamamlanmış günün günlük aralığı (OGH)
     gecmis = df.iloc[-6:-1] if len(df) >= 6 else df.iloc[:-1]
     araliklar = (gecmis["High"] - gecmis["Low"]).astype(float)
     ogh = float(araliklar.mean()) if len(araliklar) > 0 else 0.0
@@ -120,7 +126,6 @@ for varlik in KATILIM_VARLIKLARI:
 
     enerji_yuzde = (bugun_aralik / ogh * 100.0) if ogh > 0 else 999.0
 
-    # Stop ve Hedef hesabı
     risk_tutar = max(ogh * 0.30, son_fiyat * 0.008)
     hedef_tutar = risk_tutar * min_odul_risk
 
@@ -170,4 +175,4 @@ st.markdown(
     * **🟢 UYGUN** ışığı yalnızca belirlediğin rakamsal oranları (enerji tüketimi, maliyet marjı ve ödül/risk oranı) geçen varlıkları gösterir; **kesin kâr garantisi vermez** ve zararlı günler her zaman mümkündür.
     * Ücretsiz piyasa verilerinde fiyatlar gecikmeli gelebilir; gerçek emir vermeden önce kendi hesabındaki anlık fiyatı ve katılım uygunluğunu teyit etmelisin.
     """
-)
+        )
