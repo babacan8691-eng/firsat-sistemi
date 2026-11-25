@@ -6,38 +6,48 @@ import yfinance as yf
 from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(
-    page_title="BIST Katılım Detaylı Analiz Paneli",
+    page_title="BIST Katılım Analiz Paneli",
     page_icon="🟢",
     layout="wide",
 )
 
+# Giriş bilgileri
 KULLANICI_ADI = "Cuma Babacan"
 SIFRE = "784512"
 
-VARSAYILAN_VARLIKLAR = [
-    {"kod": "GLDTR.IS", "ad": "QNB Altın Katılım BYF", "tur": "Katılım BYF"},
-    {"kod": "GMSTR.IS", "ad": "QNB Gümüş Katılım BYF", "tur": "Katılım BYF"},
-    {"kod": "THYAO.IS", "ad": "Türk Hava Yolları", "tur": "Pay Senedi"},
-    {"kod": "BIMAS.IS", "ad": "BİM Mağazalar", "tur": "Pay Senedi"},
-    {"kod": "TUPRS.IS", "ad": "Tüpraş", "tur": "Pay Senedi"},
+# Geniş BIST katılım hisse ve BYF aday havuzu (.IS uzantılı)
+# Kendi katılım listene göre istediğin sembolü ekleyip çıkarabilirsin.
+KATILIM_HAVUZU = [
+    {"kod": "TUPRS.IS", "ad": "Tüpraş", "tur": "Katılım Hisse"},
+    {"kod": "BIMAS.IS", "ad": "BİM Mağazalar", "tur": "Katılım Hisse"},
+    {"kod": "THYAO.IS", "ad": "Türk Hava Yolları", "tur": "Katılım Hisse"},
+    {"kod": "ASELS.IS", "ad": "Aselsan", "tur": "Katılım Hisse"},
+    {"kod": "ENKAI.IS", "ad": "Enka İnşaat", "tur": "Katılım Hisse"},
+    {"kod": "EREGL.IS", "ad": "Ereğli Demir Çelik", "tur": "Katılım Hisse"},
+    {"kod": "KCHOL.IS", "ad": "Koç Holding", "tur": "Katılım Hisse"},
+    {"kod": "SAHOL.IS", "ad": "Sabancı Holding", "tur": "Katılım Hisse"},
+    {"kod": "SASA.IS", "ad": "Sasa Polyester", "tur": "Katılım Hisse"},
+    {"kod": "HEKTS.IS", "ad": "Hektaş", "tur": "Katılım Hisse"},
+    {"kod": "PETKM.IS", "ad": "Petkim", "tur": "Katılım Hisse"},
+    {"kod": "FROTO.IS", "ad": "Ford Otosan", "tur": "Katılım Hisse"},
+    {"kod": "TOASO.IS", "ad": "Tofaş Oto", "tur": "Katılım Hisse"},
+    {"kod": "ARCLK.IS", "ad": "Arçelik", "tur": "Katılım Hisse"},
+    {"kod": "VESTL.IS", "ad": "Vestel", "tur": "Katılım Hisse"},
+    {"kod": "GUBRF.IS", "ad": "Gübre Fabrikaları", "tur": "Katılım Hisse"},
+    {"kod": "KONTR.IS", "ad": "Kontrolmatik", "tur": "Katılım Hisse"},
+    {"kod": "ODAS.IS", "ad": "Odaş Elektrik", "tur": "Katılım Hisse"},
+    {"kod": "KRDMD.IS", "ad": "Kardemir (D)", "tur": "Katılım Hisse"},
+    {"kod": "SISE.IS", "ad": "Şişecam", "tur": "Katılım Hisse"},
+    {"kod": "GLDTR.IS", "ad": "Altın Katılım BYF", "tur": "Katılım BYF"},
+    {"kod": "GMSTR.IS", "ad": "Gümüş Katılım BYF", "tur": "Katılım BYF"},
 ]
-
-try:
-    from veri.katilim_listesi import KATILIM_VARLIKLARI as HARICI_LISTE
-
-    if isinstance(HARICI_LISTE, list) and len(HARICI_LISTE) > 0:
-        VARLIK_LISTESI = HARICI_LISTE
-    else:
-        VARLIK_LISTESI = VARSAYILAN_VARLIKLAR
-except Exception:
-    VARLIK_LISTESI = VARSAYILAN_VARLIKLAR
 
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 
 if not st.session_state.giris_yapildi:
     st.title("Panel Girişi")
-    st.caption("Devam etmek için kullanıcı adı ve şifrenizi girin.")
+    st.caption("Kişisel analiz paneline erişmek için kullanıcı adı ve şifrenizi girin.")
     with st.form("giris_formu"):
         girilen_ad = st.text_input("Kullanıcı Adı")
         girilen_sifre = st.text_input("Şifre", type="password")
@@ -50,95 +60,104 @@ if not st.session_state.giris_yapildi:
                 st.error("Kullanıcı adı veya şifre hatalı.")
     st.stop()
 
+# Üst başlık ve çıkış
 sol_baslik, sag_buton = st.columns([6, 1])
 with sol_baslik:
-    st.title("BIST Katılım Detaylı Analiz Paneli")
-    st.caption("Açılışta tek işlem • Günlük kâr veya akşam stop • Gerçek fiyat, maliyet ve risk matematiği")
+    st.title("BIST Katılım Otomatik Analiz Paneli")
+    st.caption("Açılışta tek işlem • Günlük kâr veya akşam stop • Uygun olanlar en üstte")
 with sag_buton:
     st.write("")
     if st.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
         st.rerun()
 
+# Türkiye saati ve 09:50 - 18:20 arası her 1 dakikada otomatik yenileme
 tr_simdi = datetime.now(ZoneInfo("Europe/Istanbul"))
 su_an = tr_simdi.time()
 seans_aktif = time(9, 50) <= su_an <= time(18, 20)
 
 if seans_aktif:
-    st_autorefresh(interval=60 * 1000, key="otomatik_1dk")
-    st.success(f"Canlı Takip Aktif (09:50 - 18:20 • 1 Dakika) — Son Güncelleme: {tr_simdi.strftime('%H:%M:%S')}")
+    st_autorefresh(interval=60 * 1000, key="bist_1dk_yenileme")
+    st.success(f"Canlı Güncelleme Aktif (09:50 - 18:20 • Her 1 Dakika) — Son Güncelleme: {tr_simdi.strftime('%H:%M:%S')}")
 else:
     st.info(f"Otomatik 1 dakikalık yenileme 09:50 - 18:20 arasındadır. Şu anki saat: {tr_simdi.strftime('%H:%M:%S')}")
 
+# Parametreler
 st.sidebar.header("Sistem Parametreleri")
-komisyon_binde = st.sidebar.number_input("Toplam Komisyon (Alış+Satış Binde)", min_value=0.0, max_value=20.0, value=2.0, step=0.2)
+komisyon_binde = st.sidebar.number_input("Toplam Komisyon (Binde)", min_value=0.0, max_value=20.0, value=2.0, step=0.2)
 makas_yuzde = st.sidebar.number_input("Tahmini Makas / Spread (%)", min_value=0.0, max_value=5.0, value=0.25, step=0.05)
 min_odul_risk = st.sidebar.number_input("Min. Ödül / Risk Oranı", min_value=1.0, max_value=5.0, value=1.5, step=0.1)
 max_enerji_yuzde = st.sidebar.slider("Maks. Sabah Enerji Tüketimi (%)", min_value=20, max_value=90, value=60, step=5)
+sadece_uygun_goster = st.sidebar.checkbox("Tabloda Sadece 🟢 UYGUN Olanları Göster", value=False)
 
 toplam_maliyet_yuzde = (komisyon_binde / 10.0) + makas_yuzde
-maliyet_esigi = toplam_maliyet_yuzde * 3.0
 
 
 @st.cache_data(ttl=55)
-def fiyat_verisi_getir(sembol: str):
+def toplu_veri_cek(sembol_listesi):
     try:
-        df = yf.download(sembol, period="10d", interval="1d", progress=False, auto_adjust=False)
-        if df is None or df.empty:
-            return None
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        gerekli = {"High", "Low", "Close"}
-        if not gerekli.issubset(set(df.columns)):
-            return None
-        df = df.dropna(subset=["High", "Low", "Close"])
-        if len(df) < 2:
-            return None
+        df = yf.download(
+            tickers=sembol_listesi,
+            period="10d",
+            interval="1d",
+            group_by="ticker",
+            progress=False,
+            auto_adjust=False,
+            threads=True,
+        )
         return df
     except Exception:
         return None
 
 
-tablo_satirlari = []
-detay_sozlugu = {}
+semboller = [x["kod"] for x in KATILIM_HAVUZU]
+ham_veri = toplu_veri_cek(semboller)
 
-for item in VARLIK_LISTESI:
-    kod = str(item.get("kod", "")).strip()
-    ad = str(item.get("ad", kod)).strip()
-    tur = str(item.get("tur", "Varlık")).strip()
 
-    df = fiyat_verisi_getir(kod)
-    if df is None:
-        tablo_satirlari.append({
-            "Durum": "⚪ VERİ YOK",
-            "Kod": kod,
-            "Varlık": f"{ad} ({tur})",
-            "Son Fiyat": "-",
-            "OGH": "-",
-            "Enerji": "-",
-            "Hedef": "-",
-            "Akşam Stop": "-",
-            "Özet Neden": "Veri kaynağında sembol bulunamadı.",
-        })
-        detay_sozlugu[kod] = {
-            "veri_var": False,
-            "ad": ad,
-            "tur": tur,
-        }
+def tek_sembol_df(ham, sembol):
+    if ham is None or ham.empty:
+        return None
+    try:
+        if isinstance(ham.columns, pd.MultiIndex):
+            if sembol in ham.columns.get_level_values(0):
+                sub = ham[sembol].copy()
+            else:
+                return None
+        else:
+            sub = ham.copy()
+        if not {"High", "Low", "Close"}.issubset(set(sub.columns)):
+            return None
+        sub = sub.dropna(subset=["High", "Low", "Close"])
+        if len(sub) < 2:
+            return None
+        return sub
+    except Exception:
+        return None
+
+
+uygun_satirlar = []
+bekle_satirlar = []
+veri_yok_kodlar = []
+
+for item in KATILIM_HAVUZU:
+    kod = item["kod"]
+    ad = item["ad"]
+    tur = item["tur"]
+
+    sub = tek_sembol_df(ham_veri, kod)
+    if sub is None:
+        veri_yok_kodlar.append(kod)
         continue
 
-    gecmis = df.iloc[-6:-1] if len(df) >= 6 else df.iloc[:-1]
+    gecmis = sub.iloc[-6:-1] if len(sub) >= 6 else sub.iloc[:-1]
     aralik_serisi = (gecmis["High"] - gecmis["Low"]).astype(float)
     ogh = float(aralik_serisi.mean()) if len(aralik_serisi) > 0 else 0.0
 
-    son_satir = df.iloc[-1]
-    son_fiyat = float(son_satir["Close"])
-    bugun_yuksek = float(son_satir["High"])
-    bugun_dusuk = float(son_satir["Low"])
+    son = sub.iloc[-1]
+    son_fiyat = float(son["Close"])
+    bugun_yuksek = float(son["High"])
+    bugun_dusuk = float(son["Low"])
     bugun_aralik = max(0.0, bugun_yuksek - bugun_dusuk)
-
-    onceki_fiyat = float(df.iloc[-2]["Close"]) if len(df) >= 2 else son_fiyat
-    gunluk_degisim_yuzde = ((son_fiyat - onceki_fiyat) / onceki_fiyat * 100.0) if onceki_fiyat > 0 else 0.0
 
     enerji_oran = (bugun_aralik / ogh * 100.0) if ogh > 0 else 999.0
 
@@ -148,30 +167,24 @@ for item in VARLIK_LISTESI:
     stop_fiyat = max(0.01, son_fiyat - risk_tutar)
     hedef_fiyat = son_fiyat + hedef_tutar
 
-    risk_yuzde = (risk_tutar / son_fiyat * 100.0) if son_fiyat > 0 else 0.0
     hedef_yuzde = (hedef_tutar / son_fiyat * 100.0) if son_fiyat > 0 else 0.0
-    gercek_oran = (hedef_tutar / risk_tutar) if risk_tutar > 0 else 0.0
+    maliyet_esigi = toplam_maliyet_yuzde * 3.0
 
     enerji_ok = enerji_oran <= max_enerji_yuzde
     maliyet_ok = hedef_yuzde >= maliyet_esigi
-    oran_ok = gercek_oran >= min_odul_risk
+    oran_ok = (hedef_tutar / risk_tutar) >= min_odul_risk if risk_tutar > 0 else False
 
-    if enerji_ok and maliyet_ok and oran_ok:
-        durum = "🟢 UYGUN"
-        ozet = "Tüm rakamsal kurallar sağlandı."
+    # Gün içi yön/durum senaryosu (gerçekleşmiş garanti değil, o anki fiyatın hedef/stop konumuna göre)
+    if son_fiyat >= hedef_fiyat:
+        senaryo = "Kârlı Hedef Bölgesi"
+    elif son_fiyat <= stop_fiyat:
+        senaryo = "Stop / Zarar Bölgesi"
     else:
-        durum = "🔴 BEKLE"
-        eksikler = []
-        if not enerji_ok:
-            eksikler.append("Enerji yüksek")
-        if not maliyet_ok:
-            eksikler.append("Hedef/maliyet marjı dar")
-        if not oran_ok:
-            eksikler.append("Ödül/risk düşük")
-        ozet = ", ".join(eksikler)
+        senaryo = "Hedef - Stop Arası"
 
-    tablo_satirlari.append({
-        "Durum": durum,
+    satir = {
+        "Öncelik": 1 if (enerji_ok and maliyet_ok and oran_ok) else 2,
+        "Durum": "🟢 UYGUN" if (enerji_ok and maliyet_ok and oran_ok) else "🔴 BEKLE",
         "Kod": kod,
         "Varlık": f"{ad} ({tur})",
         "Son Fiyat": round(son_fiyat, 2),
@@ -179,75 +192,85 @@ for item in VARLIK_LISTESI:
         "Enerji": f"%{enerji_oran:.0f}" if enerji_oran < 900 else "-",
         "Hedef": round(hedef_fiyat, 2),
         "Akşam Stop": round(stop_fiyat, 2),
-        "Özet Neden": ozet,
-    })
-
-    detay_sozlugu[kod] = {
-        "veri_var": True,
-        "ad": ad,
-        "tur": tur,
-        "durum": durum,
-        "son_fiyat": son_fiyat,
-        "onceki_fiyat": onceki_fiyat,
-        "gunluk_degisim_yuzde": gunluk_degisim_yuzde,
-        "bugun_yuksek": bugun_yuksek,
-        "bugun_dusuk": bugun_dusuk,
-        "bugun_aralik": bugun_aralik,
-        "ogh": ogh,
-        "enerji_oran": enerji_oran,
-        "enerji_ok": enerji_ok,
-        "risk_tutar": risk_tutar,
-        "risk_yuzde": risk_yuzde,
-        "hedef_tutar": hedef_tutar,
-        "hedef_yuzde": hedef_yuzde,
-        "stop_fiyat": stop_fiyat,
-        "hedef_fiyat": hedef_fiyat,
-        "gercek_oran": gercek_oran,
-        "maliyet_ok": maliyet_ok,
-        "oran_ok": oran_ok,
+        "Senaryo": senaryo,
+        "Not": (
+            "Tüm kurallar sağlandı."
+            if (enerji_ok and maliyet_ok and oran_ok)
+            else ", ".join(
+                [n for ok, n in [
+                    (enerji_ok, "Enerji yüksek"),
+                    (maliyet_ok, "Hedef/maliyet dar"),
+                    (oran_ok, "Ödül/risk düşük"),
+                ] if not ok]
+            )
+        ),
     }
 
-st.subheader("1. Genel Tarama Tablosu")
-st.dataframe(pd.DataFrame(tablo_satirlari), use_container_width=True, hide_index=True)
+    if satir["Öncelik"] == 1:
+        uygun_satirlar.append(satir)
+    else:
+        bekle_satirlar.append(satir)
+
+# Uygun olanları en üste al
+sirali_satirlar = uygun_satirlar + bekle_satirlar
+
+# Uygun olanlar arasında kârlı / zararlı senaryo sayımı
+uygun_karli_adet = sum(1 for x in uygun_satirlar if x["Senaryo"] == "Kârlı Hedef Bölgesi")
+uygun_zarar_adet = sum(1 for x in uygun_satirlar if x["Senaryo"] == "Stop / Zarar Bölgesi")
+uygun_bekleyen_adet = sum(1 for x in uygun_satirlar if x["Senaryo"] == "Hedef - Stop Arası")
+
+# Üst Özet Alanı
+st.subheader("Uygun İşlem Özeti")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("🟢 Uygun Varlık Adedi", len(uygun_satirlar))
+m2.metric("Hedef Bölgesinde (Kârlı Senaryo)", uygun_karli_adet)
+m3.metric("Stop Bölgesinde (Zarar Senaryosu)", uygun_zarar_adet)
+m4.metric("Hedef-Stop Arasında Açık Senaryo", uygun_bekleyen_adet)
 
 st.divider()
-st.subheader("2. Seçili Varlık İçin Detaylı Analiz ve Karar Gerekçesi")
 
-secili_kod = st.selectbox(
-    "İncelemek istediğin varlığı seç:",
-    options=[v["kod"] for v in VARLIK_LISTESI],
-    format_func=lambda k: f"{k} — {detay_sozlugu[k]['ad']}",
-)
-
-d = detay_sozlugu[secili_kod]
-
-if not d["veri_var"]:
-    st.warning(f"**{secili_kod}** için veri kaynağından fiyat serisi alınamadı. Farklı bir BIST kodu veya katılım hissesi ile deneyebilirsin.")
+# Tablo gösterimi
+st.subheader("1. Sıralı Tarama Tablosu (Uygun Olanlar Üstte)")
+if sadece_uygun_goster:
+    gosterilecek = [ {k: v for k, v in s.items() if k != "Öncelik"} for s in uygun_satirlar ]
 else:
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Son Fiyat", f"{d['son_fiyat']:.2f} TL", f"{d['gunluk_degisim_yuzde']:+.2f}%")
-    m2.metric("5 Günlük Ort. Hareket (OGH)", f"{d['ogh']:.2f} TL", f"Bugün Aralık: {d['bugun_aralik']:.2f} TL")
-    m3.metric("Kâr Hedefi", f"{d['hedef_fiyat']:.2f} TL", f"+{d['hedef_tutar']:.2f} TL (+%{d['hedef_yuzde']:.2f})")
-    m4.metric("Akşam Stop", f"{d['stop_fiyat']:.2f} TL", f"-{d['risk_tutar']:.2f} TL (-%{d['risk_yuzde']:.2f})")
+    gosterilecek = [ {k: v for k, v in s.items() if k != "Öncelik"} for s in sirali_satirlar ]
 
-    st.markdown("#### Kural Bazlı Karar Analizi")
-    st.markdown(
-        f"""
-        * **Genel Karar:** **{d['durum']}**
-        * **1) Sabah Enerji Tüketimi:** Bugünkü hareket genişliği (**{d['bugun_aralik']:.2f} TL**), son 5 günün ortalama hareketinin (**{d['ogh']:.2f} TL**) **%{d['enerji_oran']:.0f}**'ine denk geliyor. Sınır **%{max_enerji_yuzde}** $\rightarrow$ **{'Geçti (Hareket alanı var)' if d['enerji_ok'] else 'Kalmadı (Enerji fazla tüketilmiş)'}**.
-        * **2) Maliyet ve Hedef Marjı:** Hedeflenen kazanç oranı **%{d['hedef_yuzde']:.2f}**. Tahmini toplam maliyetin (%{toplam_maliyet_yuzde:.2f}) 3 katı eşiği **%{maliyet_esigi:.2f}** $\rightarrow$ **{'Geçti (Maliyet marjı yeterli)' if d['maliyet_ok'] else 'Kalmadı (Hedef, maliyete göre dar)'}**.
-        * **3) Ödül / Risk Dengesi:** Her **1,00 TL** riske karşılık **{d['gercek_oran']:.2f} TL** potansiyel hedef bulunuyor (Hedef en az **{min_odul_risk:.1f}x** olmalı) $\rightarrow$ **{'Geçti' if d['oran_ok'] else 'Kalmadı'}**.
-        * **Gün İçi Fiyat Aralığı:** En Düşük **{d['bugun_dusuk']:.2f} TL** — En Yüksek **{d['bugun_yuksek']:.2f} TL** (Önceki Kapanış: **{d['onceki_fiyat']:.2f} TL**).
-        """
-    )
+if len(gosterilecek) > 0:
+    st.dataframe(pd.DataFrame(gosterilecek), use_container_width=True, hide_index=True)
+else:
+    st.warning("Seçili kriterlere göre şu an 🟢 UYGUN statüsünde varlık bulunmuyor.")
+
+if veri_yok_kodlar:
+    st.caption(f"Veri kaynağında fiyat kaydı bulunamayan semboller (tabloya boş satır eklenmedi): {', '.join(veri_yok_kodlar)}")
 
 st.divider()
-with st.expander("3. Bu Panelde Neye Göre İşlem Kararı Verilir? (Kural Rehberi)"):
-    st.markdown(
-        """
-        * **Tek İşlem Kuralı:** Gün içinde şartlar sağlansa bile **yalnızca 1 işlem** açılır; kâr hedefi veya akşam stop sonrasında aynı gün ikinci işlem açılmaz.
-        * **Yeşil Işık (🟢 UYGUN) Ne Anlama Gelir?** Sadece o anki fiyat, geçmiş 5 günlük hareket kapasitesi, maliyet eşiği ve risk/ödül oranının senin kurallarına uyduğunu gösterir; **kesin kâr garantisi değildir**.
-        * **Zarar Riski:** Piyasadaki ani haberler veya fiyat boşlukları nedeniyle zararlı günler ve stop seviyelerinin altında kapanışlar her zaman mümkündür.
-        """
-    )
-    
+
+# Detaylı inceleme bölümü
+st.subheader("2. Detaylı Rakamsal İnceleme")
+secenekler = [f"{s['Kod']} — {s['Varlık']}" for s in sirali_satirlar]
+if secenekler:
+    secili = st.selectbox("İncelemek istediğin varlığı seç:", secenekler)
+    secili_kod = secili.split(" — ")[0].strip()
+    detay = next((s for s in sirali_satirlar if s["Kod"] == secili_kod), None)
+    if detay:
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Son Fiyat", f"{detay['Son Fiyat']} TL")
+        d2.metric("5 Günlük OGH", f"{detay['OGH']} TL")
+        d3.metric("Kâr Hedefi", f"{detay['Hedef']} TL")
+        d4.metric("Akşam Stop", f"{detay['Akşam Stop']} TL")
+
+        st.markdown(
+            f"""
+            * **Genel Durum:** {detay['Durum']}
+            * **Sabah Enerji Tüketimi:** {detay['Enerji']} (Sınır: %{max_enerji_yuzde})
+            * **Mevcut Konum / Senaryo:** {detay['Senaryo']}
+            * **Sistem Notu:** {detay['Not']}
+            """
+        )
+
+st.divider()
+st.caption(
+    "Not: Bu ekran belirlenen rakamsal kurallara göre otomatik tarama yapar; kesin kâr garantisi vermez "
+    "ve zararlı işlemler her zaman mümkündür. Emir vermeden önce kendi hesabınızdaki anlık veriyi ve katılım uygunluğunu kontrol edin."
+)
