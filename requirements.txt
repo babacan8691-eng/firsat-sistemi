@@ -1,1 +1,4 @@
-pip install flask requests beautifulsoup4 schedule
+streamlit>=1.36.0
+yfinance>=0.2.40
+pandas>=2.0.0
+streamlit-autorefresh>=1.0.1
